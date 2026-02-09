@@ -13,27 +13,86 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Read-only buffer for binary file parsing."""
+"""Read-only buffer for binary file parsing using memory-mapped files.
+
+This module provides efficient file reading using mmap, similar to the C++
+rabbitsnark implementation which uses tsl::ReadOnlyMemoryRegion with
+madvise(MADV_SEQUENTIAL) for optimized sequential reads.
+"""
 
 from __future__ import annotations
 
+import mmap
+import os
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import BinaryIO
 
 
 @dataclass
 class ReadOnlyBuffer:
-    """A read-only buffer for parsing binary data with little-endian byte order."""
+    """A read-only buffer for parsing binary data with little-endian byte order.
 
-    data: bytes
+    Uses memory-mapped files for efficient I/O, especially for large files
+    like zkey proving keys.
+    """
+
+    data: mmap.mmap | bytes
     offset: int = field(default=0)
+    _file: BinaryIO | None = field(default=None, repr=False)
 
     @classmethod
     def from_file(cls, path: str | Path) -> ReadOnlyBuffer:
-        """Create a buffer from a file path."""
-        with open(path, "rb") as f:
-            return cls(f.read())
+        """Create a buffer from a file path using memory mapping.
+
+        The file is memory-mapped for efficient access, similar to the C++
+        implementation using tsl::ReadOnlyMemoryRegion.
+
+        Args:
+            path: Path to the file to read.
+
+        Returns:
+            A ReadOnlyBuffer backed by a memory-mapped file.
+        """
+        path = Path(path)
+        file_size = path.stat().st_size
+
+        if file_size == 0:
+            # mmap doesn't support zero-length files
+            return cls(b"")
+
+        f = open(path, "rb")
+        try:
+            # Create read-only memory map
+            # ACCESS_READ is equivalent to PROT_READ in C
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+
+            # On Unix, provide sequential access hint like madvise(MADV_SEQUENTIAL)
+            if hasattr(mmap, "MADV_SEQUENTIAL"):
+                mm.madvise(mmap.MADV_SEQUENTIAL)
+
+            return cls(data=mm, _file=f)
+        except Exception:
+            f.close()
+            raise
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> ReadOnlyBuffer:
+        """Create a buffer from raw bytes (for testing)."""
+        return cls(data=data)
+
+    def close(self) -> None:
+        """Close the memory map and underlying file."""
+        if isinstance(self.data, mmap.mmap):
+            self.data.close()
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+
+    def __del__(self) -> None:
+        """Ensure resources are cleaned up."""
+        self.close()
 
     def read_bytes(self, size: int) -> bytes:
         """Read raw bytes from the buffer."""
@@ -44,7 +103,7 @@ class ReadOnlyBuffer:
             )
         result = self.data[self.offset : self.offset + size]
         self.offset += size
-        return result
+        return bytes(result)
 
     def read_uint32(self) -> int:
         """Read a 32-bit unsigned integer (little-endian)."""
@@ -66,7 +125,7 @@ class ReadOnlyBuffer:
                 f"Buffer overflow: trying to peek {size} bytes at offset "
                 f"{self.offset}, but buffer size is {len(self.data)}"
             )
-        return self.data[self.offset : self.offset + size]
+        return bytes(self.data[self.offset : self.offset + size])
 
     def set_offset(self, offset: int) -> None:
         """Set the buffer offset to a specific position."""
@@ -79,3 +138,24 @@ class ReadOnlyBuffer:
     def remaining(self) -> int:
         """Return the number of bytes remaining in the buffer."""
         return len(self.data) - self.offset
+
+    def get_slice(self, start: int, end: int) -> memoryview:
+        """Get a memory view of a slice without copying.
+
+        This is useful for passing data directly to numpy without copying,
+        similar to how the C++ implementation uses ReadPtr().
+
+        Args:
+            start: Start offset (absolute).
+            end: End offset (absolute).
+
+        Returns:
+            A memoryview of the requested slice.
+        """
+        if end > len(self.data):
+            raise ValueError(
+                f"Buffer overflow: slice end {end} exceeds buffer size {len(self.data)}"
+            )
+        if isinstance(self.data, mmap.mmap):
+            return memoryview(self.data)[start:end]
+        return memoryview(self.data)[start:end]

@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ..base.montgomery import from_montgomery
+
 if TYPE_CHECKING:
     from ..base.buffer import ReadOnlyBuffer
 
