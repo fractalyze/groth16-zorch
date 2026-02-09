@@ -17,8 +17,8 @@
 
 from .buffer import ReadOnlyBuffer
 from .modulus import Modulus
-from .montgomery import from_montgomery, to_montgomery
 from .sections import Section, Sections
+from zk_dtypes import from_montgomery, to_montgomery
 
 __all__ = [
     "ReadOnlyBuffer",

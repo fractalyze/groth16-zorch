@@ -16,8 +16,7 @@
 """Coefficient representation for R1CS constraints.
 
 Note: Coefficients in zkey files are stored in double Montgomery form,
-which requires special handling that zk_dtypes doesn't provide directly.
-We use manual Montgomery conversion for coefficient values.
+which requires applying Montgomery conversion twice.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..base.montgomery import from_montgomery
+from zk_dtypes import from_montgomery
 
 if TYPE_CHECKING:
     from ..base.buffer import ReadOnlyBuffer
