@@ -23,7 +23,6 @@ madvise(MADV_SEQUENTIAL) for optimized sequential reads.
 from __future__ import annotations
 
 import mmap
-import os
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path

@@ -75,9 +75,7 @@ class G1Point:
         return y
 
     @classmethod
-    def read(
-        cls, buffer: ReadOnlyBuffer, field_size: int, modulus: int
-    ) -> G1Point:
+    def read(cls, buffer: ReadOnlyBuffer, field_size: int, modulus: int) -> G1Point:
         """Read a G1 point from the buffer.
 
         Args:
@@ -122,7 +120,8 @@ class G1Point:
 
 @dataclass
 class G2Point:
-    """A point on the G2 curve (affine coordinates with extension field) using zk_dtypes.
+    """
+    A point on the G2 curve (affine coordinates with extension field) using zk_dtypes.
 
     The point is stored internally in Montgomery form using bn254_g2_affine dtype.
     """
@@ -142,9 +141,7 @@ class G2Point:
         return (y0, y1)
 
     @classmethod
-    def read(
-        cls, buffer: ReadOnlyBuffer, field_size: int, modulus: int
-    ) -> G2Point:
+    def read(cls, buffer: ReadOnlyBuffer, field_size: int, modulus: int) -> G2Point:
         """Read a G2 point from the buffer.
 
         Args:

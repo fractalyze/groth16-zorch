@@ -50,9 +50,7 @@ class Coefficient:
     value: int  # The coefficient value (in standard form)
 
     @classmethod
-    def read(
-        cls, buffer: ReadOnlyBuffer, field_size: int, modulus: int
-    ) -> Coefficient:
+    def read(cls, buffer: ReadOnlyBuffer, field_size: int, modulus: int) -> Coefficient:
         """Read a coefficient from the buffer.
 
         Args:

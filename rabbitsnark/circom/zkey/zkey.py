@@ -239,7 +239,10 @@ class ZKeyV1(ZKey):
 
         sections.move_to(ZKeySectionType.POINTS_C1)
         points_c1 = cls._read_g1_points(
-            buffer, num_vars - num_public_inputs - 1, base_field_size, base_field_modulus
+            buffer,
+            num_vars - num_public_inputs - 1,
+            base_field_size,
+            base_field_modulus,
         )
 
         sections.move_to(ZKeySectionType.POINTS_H1)

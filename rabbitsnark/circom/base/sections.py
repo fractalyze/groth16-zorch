@@ -71,9 +71,7 @@ class Sections:
             ValueError: If the section type is not found.
         """
         type_value = (
-            section_type.value
-            if isinstance(section_type, IntEnum)
-            else section_type
+            section_type.value if isinstance(section_type, IntEnum) else section_type
         )
         for section in self.sections:
             if section.section_type == type_value:
@@ -84,9 +82,7 @@ class Sections:
     def get_section(self, section_type: int | IntEnum) -> Section | None:
         """Get a section by type."""
         type_value = (
-            section_type.value
-            if isinstance(section_type, IntEnum)
-            else section_type
+            section_type.value if isinstance(section_type, IntEnum) else section_type
         )
         for section in self.sections:
             if section.section_type == type_value:
