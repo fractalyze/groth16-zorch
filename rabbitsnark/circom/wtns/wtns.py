@@ -83,9 +83,7 @@ class WtnsDataSection:
         return [int(w) for w in self._witnesses]
 
     @classmethod
-    def read(
-        cls, buffer: ReadOnlyBuffer, header: WtnsHeaderSection
-    ) -> WtnsDataSection:
+    def read(cls, buffer: ReadOnlyBuffer, header: WtnsHeaderSection) -> WtnsDataSection:
         """Read the data section from the buffer.
 
         Args:

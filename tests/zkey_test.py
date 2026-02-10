@@ -65,7 +65,9 @@ class TestZKeyParser(absltest.TestCase):
         # Check derived properties
         self.assertEqual(zkey.domain_size, 4)
         self.assertEqual(zkey.num_instance_variables, 2)  # num_public_inputs + 1
-        self.assertEqual(zkey.num_witness_variables, 4)  # num_vars - num_public_inputs - 1
+        self.assertEqual(
+            zkey.num_witness_variables, 4
+        )  # num_vars - num_public_inputs - 1
 
     def test_verifying_key(self):
         """Test that verifying key is parsed correctly."""

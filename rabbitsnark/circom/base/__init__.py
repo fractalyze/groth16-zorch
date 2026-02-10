@@ -15,10 +15,11 @@
 
 """Base utilities for circom file parsing."""
 
+from zk_dtypes import from_montgomery, to_montgomery
+
 from .buffer import ReadOnlyBuffer
 from .modulus import Modulus
 from .sections import Section, Sections
-from zk_dtypes import from_montgomery, to_montgomery
 
 __all__ = [
     "ReadOnlyBuffer",
