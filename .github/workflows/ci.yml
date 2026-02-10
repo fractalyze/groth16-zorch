@@ -1,0 +1,34 @@
+name: CI
+
+permissions: read-all
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+# Ensure that only a single job or workflow using the same
+# concurrency group will run at a time. This would cancel
+# any in-progress jobs in the same github workflow and github
+# ref (e.g. refs/heads/main or refs/pull/<pr_number>/merge).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # TODO(chokobole): add more jobs like tests, build, etc.
+
+  pre-commit-style:
+    runs-on: [self-hosted, rabbitsnark-py]
+    steps:
+      - name: Checkout rabbitsnark-py
+        uses: actions/checkout@v4
+
+      - name: Checkout Setup Python
+        uses: actions/setup-python@v4.7.0
+        with:
+          python-version: "3.10"
+
+      - name: Run pre-commit github action
+        uses: pre-commit/action@646c83fcd040023954eafda54b4db0192ce70507 # pin@v3
