@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from zk_dtypes import bn254_sf_std
+from zk_dtypes import bn254_sf
 
 from ..base.buffer import ReadOnlyBuffer
 from ..base.modulus import Modulus
@@ -71,11 +71,11 @@ class WtnsHeaderSection:
 class WtnsDataSection:
     """Data section of a wtns file containing witness values.
 
-    Witness values are stored as a numpy array with bn254_sf_std dtype.
+    Witness values are stored as a numpy array with bn254_sf dtype.
     The values are in standard (non-Montgomery) form.
     """
 
-    _witnesses: np.ndarray  # dtype=bn254_sf_std
+    _witnesses: np.ndarray  # dtype=bn254_sf
 
     @property
     def witnesses(self) -> list[int]:
@@ -93,7 +93,7 @@ class WtnsDataSection:
         field_size = len(header.modulus.bytes_data)
         # Read all witness values at once using numpy
         raw_bytes = buffer.read_bytes(field_size * header.num_witness)
-        witnesses = np.frombuffer(raw_bytes, dtype=bn254_sf_std)
+        witnesses = np.frombuffer(raw_bytes, dtype=bn254_sf)
         return cls(witnesses)
 
 
