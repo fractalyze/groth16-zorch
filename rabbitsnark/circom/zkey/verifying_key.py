@@ -22,12 +22,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from zk_dtypes import (
-    bn254_g1_affine,
-    bn254_g1_affine_std,
-    bn254_g2_affine,
-    bn254_g2_affine_std,
-)
+from zk_dtypes import bn254_g1_affine, bn254_g2_affine
 
 if TYPE_CHECKING:
     from ..base.buffer import ReadOnlyBuffer
@@ -97,8 +92,7 @@ class G1Point:
         x_bytes = x.to_bytes(32, "little")
         y_bytes = y.to_bytes(32, "little")
         raw_bytes = x_bytes + y_bytes
-        # Use _std dtype so values are stored as-is without Montgomery conversion
-        data = np.frombuffer(raw_bytes, dtype=bn254_g1_affine_std)[0]
+        data = np.frombuffer(raw_bytes, dtype=bn254_g1_affine)[0]
         return cls(data)
 
     def is_zero(self) -> bool:
@@ -165,8 +159,7 @@ class G2Point:
         y0_bytes = y[0].to_bytes(32, "little")
         y1_bytes = y[1].to_bytes(32, "little")
         raw_bytes = x0_bytes + x1_bytes + y0_bytes + y1_bytes
-        # Use _std dtype so values are stored as-is without Montgomery conversion
-        data = np.frombuffer(raw_bytes, dtype=bn254_g2_affine_std)[0]
+        data = np.frombuffer(raw_bytes, dtype=bn254_g2_affine)[0]
         return cls(data)
 
     def is_zero(self) -> bool:
