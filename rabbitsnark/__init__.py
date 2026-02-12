@@ -12,6 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""RabbitSNARK Python library for circom file parsing."""
+"""RabbitSNARK Python library for circom file parsing and ZK primitives."""
 
 __version__ = "0.1.0"
+
+from rabbitsnark import ntt
+
+__all__ = [
+    "__version__",
+    "ntt",
+]
