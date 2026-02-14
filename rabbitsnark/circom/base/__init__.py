@@ -17,6 +17,7 @@
 
 from .buffer import ReadOnlyBuffer
 from .modulus import Modulus
+from .montgomery import from_montgomery, to_montgomery
 from .sections import Section, Sections
 
 __all__ = [
