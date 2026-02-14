@@ -25,7 +25,6 @@ Example usage:
     >>> Bz = spmv(B, z_mont)
 """
 
-from .backend import spmv_backend
 from .csr_matrix import CSRMatrix
 from .r1cs import build_r1cs_matrices, witness_to_montgomery
 from .spmv import spmv
@@ -34,6 +33,5 @@ __all__ = [
     "CSRMatrix",
     "build_r1cs_matrices",
     "spmv",
-    "spmv_backend",
     "witness_to_montgomery",
 ]
