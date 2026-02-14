@@ -25,8 +25,7 @@ Uses ELL (ELLPACK) format: the sparse matrix is stored as padded 2D arrays
     3. Reshape + sum: y[i] = sum(products[i, :])
 
 This avoids scatter operations (y.at[i].set()) which the ZKX backend does
-not support under JIT for ZK field types. Phase 2 will transparently
-replace this with the ZKX backend's native CSR SpMV.
+not support under JIT for ZK field types.
 """
 
 from __future__ import annotations
@@ -75,11 +74,7 @@ def _spmv_kernel(
 
 
 def spmv(matrix: CSRMatrix, x: Array) -> Array:
-    """Compute y = A @ x with automatic backend selection.
-
-    Tries the ZKX native CSR SpMV backend first (via MLIR construction
-    and EmitMatrixVectorMultiplicationOp). Falls back to the ELL-format
-    JIT kernel if the backend path fails.
+    """Compute y = A @ x using ELL-format JIT kernel.
 
     Both the matrix values and x must be in Montgomery form.
 
@@ -90,15 +85,10 @@ def spmv(matrix: CSRMatrix, x: Array) -> Array:
     Returns:
         Dense result vector, shape (n_rows,).
     """
-    try:
-        from .backend import spmv_backend
-
-        return spmv_backend(matrix, x)
-    except Exception:
-        return _spmv_kernel(
-            matrix.ell_col_indices,
-            matrix.ell_values,
-            x,
-            matrix.n_rows,
-            matrix.max_nnz_per_row,
-        )
+    return _spmv_kernel(
+        matrix.ell_col_indices,
+        matrix.ell_values,
+        x,
+        matrix.n_rows,
+        matrix.max_nnz_per_row,
+    )

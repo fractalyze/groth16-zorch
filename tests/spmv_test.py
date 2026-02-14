@@ -32,7 +32,6 @@ from rabbitsnark.spmv import (
     CSRMatrix,
     build_r1cs_matrices,
     spmv,
-    spmv_backend,
     witness_to_montgomery,
 )
 
@@ -288,83 +287,6 @@ class TestR1CSIntegration(absltest.TestCase):
             dtype=bn254_sf_mont,
         )
         _assert_eq(self, AzBz, expected)
-
-
-class TestSpMVBackend(absltest.TestCase):
-    """Tests for ZKX backend native CSR SpMV."""
-
-    def test_backend_hand_computed(self):
-        """Test backend SpMV with hand-computed 3×3 matrix.
-
-        A = [[1, 2, 0],
-             [0, 0, 3],
-             [4, 0, 5]]
-
-        x = [10, 20, 30]
-
-        A * x = [1*10 + 2*20, 3*30, 4*10 + 5*30] = [50, 90, 190]
-        """
-        row_ptrs = np.array([0, 2, 3, 5], dtype=np.int32)
-        col_indices = np.array([0, 1, 2, 0, 2], dtype=np.int32)
-        values = jnp.array([1, 2, 3, 4, 5], dtype=bn254_sf_mont)
-        csr = CSRMatrix.from_arrays(row_ptrs, col_indices, values, 3, 3)
-
-        x = jnp.array([10, 20, 30], dtype=bn254_sf_mont)
-        y = spmv_backend(csr, x)
-
-        expected = jnp.array([50, 90, 190], dtype=bn254_sf_mont)
-        _assert_eq(self, y, expected)
-
-    def test_backend_identity(self):
-        """Test backend SpMV with identity matrix."""
-        row_ptrs = np.array([0, 1, 2, 3], dtype=np.int32)
-        col_indices = np.array([0, 1, 2], dtype=np.int32)
-        values = jnp.array([1, 1, 1], dtype=bn254_sf_mont)
-        csr = CSRMatrix.from_arrays(row_ptrs, col_indices, values, 3, 3)
-
-        x = jnp.array([10, 20, 30], dtype=bn254_sf_mont)
-        y = spmv_backend(csr, x)
-
-        _assert_eq(self, y, x)
-
-    def test_backend_field_arithmetic(self):
-        """Test backend SpMV with field arithmetic (negative values mod p)."""
-        p = BN254_FR_MODULUS
-
-        # 2×2 matrix: [[-1, 0], [0, 2]]
-        row_ptrs = np.array([0, 1, 2], dtype=np.int32)
-        col_indices = np.array([0, 1], dtype=np.int32)
-        values = jnp.array([p - 1, 2], dtype=bn254_sf_mont)
-        csr = CSRMatrix.from_arrays(row_ptrs, col_indices, values, 2, 2)
-
-        x = jnp.array([5, 7], dtype=bn254_sf_mont)
-        y = spmv_backend(csr, x)
-
-        expected = jnp.array([p - 5, 14], dtype=bn254_sf_mont)
-        _assert_eq(self, y, expected)
-
-    def test_backend_multiplier_3(self):
-        """Test backend SpMV with multiplier_3 circuit data."""
-        test_data_dir = Path(__file__).parent / "data"
-        p = BN254_FR_MODULUS
-
-        zkey = parse_zkey(test_data_dir / "multiplier_3.zkey")
-        wtns = parse_wtns(test_data_dir / "multiplier_3.wtns")
-
-        A, B = build_r1cs_matrices(zkey, bn254_sf_mont)
-        z_mont = witness_to_montgomery(wtns.witnesses, bn254_sf_mont, p)
-
-        Az = spmv_backend(A, z_mont)
-        Bz = spmv_backend(B, z_mont)
-
-        expected_Az = jnp.array(
-            [p - 3, p - 12, 1, 60],
-            dtype=bn254_sf_mont,
-        )
-        _assert_eq(self, Az, expected_Az)
-
-        expected_Bz = jnp.array([4, 5, 0, 0], dtype=bn254_sf_mont)
-        _assert_eq(self, Bz, expected_Bz)
 
 
 if __name__ == "__main__":
