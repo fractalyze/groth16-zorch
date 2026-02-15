@@ -40,7 +40,16 @@ References:
 
 from .msm import MSM
 from .msm_bn254 import MSMBn254, MSMBn254G2
-from .pippenger import pippenger_msm
+from .pippenger import (
+    _affine_to_xyzz,
+    _decompose_scalars,
+    _decompose_scalars_jit,
+    _ec_zeros,
+    _estimate_optimal_window_bits,
+    _pippenger_msm,
+    _to_xyzz_dtype,
+    pippenger_msm,
+)
 
 __all__ = [
     # Base class
@@ -50,4 +59,12 @@ __all__ = [
     "MSMBn254G2",
     # Algorithm
     "pippenger_msm",
+    # Internal (for single-JIT prover)
+    "_pippenger_msm",
+    "_decompose_scalars",
+    "_decompose_scalars_jit",
+    "_affine_to_xyzz",
+    "_ec_zeros",
+    "_to_xyzz_dtype",
+    "_estimate_optimal_window_bits",
 ]

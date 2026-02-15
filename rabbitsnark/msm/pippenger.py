@@ -66,6 +66,44 @@ def _decompose_scalars(scalars: Array, scalar_bits: int, window_bits: int) -> Ar
     return jnp.array(indices)
 
 
+def _decompose_scalars_jit(
+    scalars_std: Array, scalar_bits: int, window_bits: int
+) -> Array:
+    """JIT-compatible scalar decomposition via bitcast to raw bytes.
+
+    bn254_sf[n] → uint8[n, 32] (little-endian), then extract window
+    indices using JAX integer ops. All operations are JIT-traceable.
+
+    Args:
+        scalars_std: Scalar field elements in standard form (bn254_sf).
+        scalar_bits: Number of bits per scalar (e.g. 254).
+        window_bits: Window size in bits.
+
+    Returns:
+        int32 array of shape [num_windows, n].
+    """
+    num_windows = (scalar_bits + window_bits - 1) // window_bits
+    mask = (1 << window_bits) - 1
+
+    raw_bytes = lax.bitcast_convert_type(scalars_std, jnp.uint8)  # [n, 32]
+
+    windows = []
+    for w in range(num_windows):
+        start_bit = w * window_bits
+        byte_idx = start_bit // 8
+        bit_offset = start_bit % 8
+
+        val = raw_bytes[:, byte_idx].astype(jnp.int32)
+        if byte_idx + 1 < 32:
+            val = val | (raw_bytes[:, byte_idx + 1].astype(jnp.int32) << 8)
+        if byte_idx + 2 < 32:
+            val = val | (raw_bytes[:, byte_idx + 2].astype(jnp.int32) << 16)
+
+        windows.append((val >> bit_offset) & mask)
+
+    return jnp.stack(windows)  # [num_windows, n]
+
+
 def _affine_to_xyzz(points: Array, xyzz_dtype) -> Array:
     """Convert affine EC points to XYZZ representation.
 
