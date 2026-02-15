@@ -37,11 +37,64 @@ from typing import TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import zk_dtypes
 from jax import dtypes, lax
 
 if TYPE_CHECKING:
     from jax import Array
+
+
+def _decompose_scalars(scalars: Array, scalar_bits: int, window_bits: int) -> Array:
+    """Decompose field scalars into integer window indices.
+
+    Returns an int32 array of shape ``[num_windows, n]`` where
+    ``result[w][i] = (int(scalars[i]) >> (w * window_bits)) & mask``.
+    """
+    mask = (1 << window_bits) - 1
+    num_windows = (scalar_bits + window_bits - 1) // window_bits
+    n = scalars.shape[0]
+
+    scalar_ints = [int(s) for s in scalars]
+    indices = np.empty((num_windows, n), dtype=np.int32)
+    for w in range(num_windows):
+        shift = w * window_bits
+        for i in range(n):
+            indices[w, i] = (scalar_ints[i] >> shift) & mask
+
+    return jnp.array(indices)
+
+
+def _affine_to_xyzz(points: Array, xyzz_dtype) -> Array:
+    """Convert affine EC points to XYZZ representation.
+
+    Affine (x, y) → XYZZ (x, y, zz=1, zzz=1).
+    """
+    ctor = xyzz_dtype.type if hasattr(xyzz_dtype, "type") else xyzz_dtype
+    np_points = np.array(points)
+    xyzz_list = [ctor((*p.item().raw, 1, 1)) for p in np_points]
+    return jnp.array(xyzz_list, dtype=xyzz_dtype)
+
+
+def _ec_zeros(shape: int | tuple[int, ...], dtype) -> jnp.ndarray:
+    """Create a JAX array of EC identity points.
+
+    ``jnp.zeros`` cannot create EC-typed arrays because numpy has no cast
+    path from ``int64`` → EC dtypes.  This helper builds the array via the
+    dtype constructor instead.
+
+    For the scalar (0-D) case, we create a 1-element array and reshape to
+    avoid the ``convert_element_type`` path that has a buffer size mismatch
+    for XYZZ types.
+    """
+    # dtype may be a numpy.dtype wrapper; .type gives the raw constructor.
+    ctor = dtype.type if hasattr(dtype, "type") else dtype
+    identity = ctor(0)
+    if isinstance(shape, int):
+        shape = (shape,)
+    n = max(math.prod(shape), 1) if shape else 1
+    arr = jnp.array([identity] * n, dtype=dtype)
+    return arr.reshape(shape) if shape else arr.reshape(())
 
 
 def _to_xyzz_dtype(point_dtype):
@@ -81,26 +134,40 @@ def pippenger_msm(
         window_bits = _estimate_optimal_window_bits(scalar_bits, n)
 
     xyzz_dtype = _to_xyzz_dtype(points.dtype)
-    zero = jnp.zeros((), dtype=xyzz_dtype)
+    zero = _ec_zeros((), xyzz_dtype)
+
+    # Convert points to XYZZ so all inner ops use same dtype.
+    info = dtypes.ecinfo(points.dtype)
+    if info.point_repr != "xyzz":
+        points = _affine_to_xyzz(points, xyzz_dtype)
+
+    # Pre-decompose scalars into window indices (int32) outside JIT.
+    # Bitwise ops (>>, &) are not supported on prime field types.
+    window_indices = _decompose_scalars(scalars, scalar_bits, window_bits)
 
     if num_chunks <= 1:
-        return _pippenger_msm(scalars, points, zero, scalar_bits, window_bits)
+        return _pippenger_msm(window_indices, points, zero, scalar_bits, window_bits)
 
     chunk_size = math.ceil(n / num_chunks)
     pad_total = chunk_size * num_chunks
+    num_windows = window_indices.shape[0]
 
-    # Pad scalars with zeros and points with identity
-    scalars_padded = jnp.zeros(pad_total, dtype=scalars.dtype)
-    scalars_padded = scalars_padded.at[:n].set(scalars)
-    points_padded = jnp.zeros(pad_total, dtype=points.dtype)
+    # Pad window_indices and points
+    wi_padded = jnp.zeros((num_windows, pad_total), dtype=jnp.int32)
+    wi_padded = wi_padded.at[:, :n].set(window_indices)
+    points_padded = _ec_zeros(pad_total, xyzz_dtype)
     points_padded = points_padded.at[:n].set(points)
 
-    scalars_chunks = scalars_padded.reshape(num_chunks, chunk_size)
+    # Reshape: [num_windows, num_chunks, chunk_size] and [num_chunks, chunk_size]
+    wi_chunks = wi_padded.reshape(num_windows, num_chunks, chunk_size)
     points_chunks = points_padded.reshape(num_chunks, chunk_size)
 
     chunk_results = jax.vmap(
-        lambda s, p: _pippenger_msm(s, p, zero, scalar_bits, window_bits)
-    )(scalars_chunks, points_chunks)
+        lambda wi, p: _pippenger_msm(wi, p, zero, scalar_bits, window_bits)
+    )(
+        wi_chunks.transpose(1, 0, 2),  # [num_chunks, num_windows, chunk_size]
+        points_chunks,
+    )
 
     # Reduce chunk results: [num_chunks] → single point
     def _reduce(i, acc):
@@ -132,7 +199,7 @@ def _estimate_optimal_window_bits(scalar_bits: int, num_points: int) -> int:
 
 
 def _pippenger_msm(
-    scalars: Array,
+    window_indices: Array,
     points: Array,
     zero: Array,
     scalar_bits: int,
@@ -141,8 +208,8 @@ def _pippenger_msm(
     """Window-outer Pippenger MSM using EC point dtypes.
 
     Args:
-        scalars: ``[n]`` scalar field array.
-        points: ``[n]`` EC point array (any representation).
+        window_indices: ``[num_windows, n]`` int32 array of window slices.
+        points: ``[n]`` EC point array (XYZZ representation).
         zero: Scalar identity point (XYZZ, zero-initialized).
         scalar_bits: Number of bits per scalar.
         window_bits: Window size in bits.
@@ -150,23 +217,22 @@ def _pippenger_msm(
     Returns:
         Single XYZZ EC point.
     """
-    n = scalars.shape[0]
+    n = points.shape[0]
     num_windows = (scalar_bits + window_bits - 1) // window_bits
     num_buckets = (1 << window_bits) - 1
-    mask = (1 << window_bits) - 1
 
     xyzz_dtype = zero.dtype
 
     # Window sums: [num_windows] XYZZ points
-    window_sums = jnp.zeros(num_windows, dtype=xyzz_dtype)
+    window_sums = _ec_zeros(num_windows, xyzz_dtype)
 
     def _process_window(w, window_sums):
         # 1-D bucket array per window
-        buckets = jnp.zeros(num_buckets, dtype=xyzz_dtype)
+        buckets = _ec_zeros(num_buckets, xyzz_dtype)
 
         # Accumulate all n points for this window
         def _acc_point(i, buckets):
-            window_slice = (scalars[i] >> (w * window_bits)) & mask
+            window_slice = window_indices[w, i]
 
             def _add():
                 idx = window_slice - 1

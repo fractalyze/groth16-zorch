@@ -31,7 +31,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
-from jax import jit, lax
+from jax import lax
 
 if TYPE_CHECKING:
     from jax import Array
@@ -39,7 +39,6 @@ if TYPE_CHECKING:
     from .ntt import NTT
 
 
-@jit
 def coset_ntt(ntt_instance: NTT, coeffs: Array, shift: Array) -> Array:
     """Compute NTT on a coset (shifted domain).
 
@@ -74,7 +73,6 @@ def coset_ntt(ntt_instance: NTT, coeffs: Array, shift: Array) -> Array:
     return ntt_instance.forward(shifted_coeffs)
 
 
-@jit
 def coset_intt(ntt_instance: NTT, evaluations: Array, shift: Array) -> Array:
     """Compute inverse NTT from coset evaluations.
 

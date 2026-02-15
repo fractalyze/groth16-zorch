@@ -13,15 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Base utilities for circom file parsing."""
+"""Groth16 zero-knowledge proof generation."""
 
-from .buffer import ReadOnlyBuffer
-from .modulus import Modulus
-from .sections import Section, Sections
+from .proof import Groth16Proof, write_public_signals
+from .prover import prove
 
 __all__ = [
-    "ReadOnlyBuffer",
-    "Modulus",
-    "Section",
-    "Sections",
+    "Groth16Proof",
+    "prove",
+    "write_public_signals",
 ]

@@ -16,10 +16,27 @@
 """Tests for MSM (Multi-Scalar Multiplication) implementations."""
 
 import jax.numpy as jnp
+import numpy as np
 from absl.testing import absltest
 from zk_dtypes import bn254_g1_affine, bn254_sf
 
 from rabbitsnark.msm import MSMBn254
+
+# BN254 base field modulus (for XYZZ→affine conversion).
+BN254_BF_P = (
+    21888242871839275222246405745257275088696311157297823662689037894645226208583
+)
+
+
+def _xyzz_to_affine(xyzz_point):
+    """Convert XYZZ point to affine (x, y) via modular inversion."""
+    raw = np.array(xyzz_point).item().raw
+    x, y, zz, zzz = (int(v) for v in raw)
+    if zz == 0:
+        return (0, 0)  # Point at infinity
+    x_aff = x * pow(zz, -1, BN254_BF_P) % BN254_BF_P
+    y_aff = y * pow(zzz, -1, BN254_BF_P) % BN254_BF_P
+    return (x_aff, y_aff)
 
 
 def _naive_msm(scalars, points, msm):
@@ -39,16 +56,22 @@ class TestMSMCorrectness(absltest.TestCase):
         self.generator = jnp.array([bn254_g1_affine((1, 2))], dtype=bn254_g1_affine)
 
     def test_multi_point_msm(self):
-        """Pippenger MSM matches naive MSM for small inputs."""
-        g = self.generator[0]
-        # P0 = G, P1 = 2G, P2 = 3G
-        points = jnp.array([g, g + g, g + g + g], dtype=bn254_g1_affine)
+        """Pippenger MSM matches naive MSM for small inputs.
+
+        Uses the same base point G for all entries — no affine+affine
+        addition needed to construct test points.
+        """
+        g = bn254_g1_affine((1, 2))
+        points = jnp.array([g, g, g], dtype=bn254_g1_affine)
         scalars = jnp.array([2, 3, 4], dtype=bn254_sf)
 
         pippenger_result = self.msm.compute(scalars, points)
         naive_result = _naive_msm(scalars, points, self.msm)
 
-        self.assertTrue(bool(jnp.all(pippenger_result == naive_result)))
+        # XYZZ points use projective coordinates — compare in affine form.
+        self.assertEqual(
+            _xyzz_to_affine(pippenger_result), _xyzz_to_affine(naive_result)
+        )
 
 
 if __name__ == "__main__":
