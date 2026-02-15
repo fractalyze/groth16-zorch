@@ -35,6 +35,7 @@ import secrets
 from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
+from jax import lax
 from zk_dtypes import (
     bn254_g1_affine,
     bn254_g1_xyzz,
@@ -48,7 +49,7 @@ from rabbitsnark.msm import MSMBn254, MSMBn254G2
 from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT, coset_ntt
 from rabbitsnark.spmv import build_r1cs_matrices, spmv, witness_to_montgomery
 
-from .proof import Groth16Proof, write_public_signals
+from .proof import Groth16Proof, write_public_signals  # noqa: F401
 
 if TYPE_CHECKING:
     from jax import Array
@@ -153,6 +154,10 @@ def prove(
 
         pi_c = pi_c + s_pi_a + r_pi_b1 + neg_rs_delta_1
 
+    pi_a = lax.convert_element_type(pi_a, bn254_g1_affine)
+    pi_b2 = lax.convert_element_type(pi_b2, bn254_g2_affine)
+    pi_c = lax.convert_element_type(pi_c, bn254_g1_affine)
+
     proof = Groth16Proof(pi_a=pi_a, pi_b=pi_b2, pi_c=pi_c)
     public_signals = write_public_signals(wtns.witnesses, num_public)
 
@@ -251,9 +256,7 @@ def _ec_scalar_mul_g2(scalar: int, point: G2Point, msm: MSMBn254G2) -> Array:
 
 def _scalar_mul_xyzz_g1(scalar: int, xyzz_point: Array, msm: MSMBn254) -> Array:
     """Multiply a G1 XYZZ point by a scalar (affine round-trip)."""
-    from rabbitsnark.groth16.proof import _xyzz_g1_to_affine
-
-    x, y = _xyzz_g1_to_affine(xyzz_point)
+    affine = lax.convert_element_type(xyzz_point, bn254_g1_affine)
     s = jnp.array([scalar], dtype=bn254_sf)
-    p = jnp.array([bn254_g1_affine((x, y))], dtype=bn254_g1_affine)
+    p = jnp.array([affine], dtype=bn254_g1_affine)
     return msm.compute(s, p)
