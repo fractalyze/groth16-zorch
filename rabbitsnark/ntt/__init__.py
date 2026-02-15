@@ -30,7 +30,7 @@ Example usage:
 """
 
 from .coset import coset_intt, coset_ntt
-from .ntt import NTT, batch_ntt
+from .ntt import NTT, _forward_ntt, _inverse_ntt, batch_ntt
 
 # Primitive 2²⁸-th root of unity in BN254 Fr (standard form)
 # Computed as: 7^((p - 1) / 2²⁸) mod p
@@ -44,4 +44,6 @@ __all__ = [
     "coset_ntt",
     "coset_intt",
     "batch_ntt",
+    "_forward_ntt",
+    "_inverse_ntt",
 ]
