@@ -28,10 +28,10 @@ The coset NTT is computed as:
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
-from jax import lax
 
 if TYPE_CHECKING:
     from jax import Array
@@ -55,16 +55,17 @@ def coset_ntt(ntt_instance: NTT, coeffs: Array, shift: Array) -> Array:
     n = coeffs.shape[0]
     dtype = coeffs.dtype
 
-    # Compute shift powers: [shift^0, shift^1, ..., shift^(n-1)]
-    shift_powers = jnp.zeros(n, dtype=dtype)
-    shift_powers = shift_powers.at[0].set(dtype.type(1))
-
-    def compute_power(i: int, powers: Array) -> Array:
-        prev = powers[i - 1]
-        powers = powers.at[i].set(prev * shift)
-        return powers
-
-    shift_powers = lax.fori_loop(1, n, compute_power, shift_powers)
+    # Compute shift powers via O(log n) doubling:
+    #   Step 0: [1]
+    #   Step 1: [1, shift]
+    #   Step 2: [1, shift, shift², shift³]
+    #   ...
+    one = dtype.type(1)
+    shift_powers = jnp.array([one], dtype=dtype)
+    step_mul = shift
+    for _ in range(int(math.log2(n))):
+        shift_powers = jnp.concatenate([shift_powers, shift_powers * step_mul])
+        step_mul = step_mul * step_mul
 
     # Multiply coefficients by shift powers
     shifted_coeffs = coeffs * shift_powers
@@ -92,19 +93,18 @@ def coset_intt(ntt_instance: NTT, evaluations: Array, shift: Array) -> Array:
     # Apply standard inverse NTT
     coeffs = ntt_instance.inverse(evaluations)
 
-    # Compute inverse shift powers: [shift^(-0), shift^(-1), ..., shift^(-(n-1))]
-    # Using shift^(-1) = shift^(p-2) by Fermat's little theorem
-    shift_inv = dtype.type(1) / shift
+    # Compute inverse shift powers via O(log n) doubling.
+    # shift⁻¹ = shift^(p - 2) by Fermat's little theorem.
+    one = dtype.type(1)
+    shift_inv = one / shift
 
-    inv_shift_powers = jnp.zeros(n, dtype=dtype)
-    inv_shift_powers = inv_shift_powers.at[0].set(dtype.type(1))
-
-    def compute_inv_power(i: int, powers: Array) -> Array:
-        prev = powers[i - 1]
-        powers = powers.at[i].set(prev * shift_inv)
-        return powers
-
-    inv_shift_powers = lax.fori_loop(1, n, compute_inv_power, inv_shift_powers)
+    inv_shift_powers = jnp.array([one], dtype=dtype)
+    step_mul = shift_inv
+    for _ in range(int(math.log2(n))):
+        inv_shift_powers = jnp.concatenate(
+            [inv_shift_powers, inv_shift_powers * step_mul]
+        )
+        step_mul = step_mul * step_mul
 
     # Multiply by inverse shift powers
     return coeffs * inv_shift_powers

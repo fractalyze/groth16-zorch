@@ -33,6 +33,7 @@ Reference: https://encrypt.a41.io/primitives/abstract-algebra/elliptic-curve/msm
 from __future__ import annotations
 
 import math
+from functools import partial
 from typing import TYPE_CHECKING
 
 import jax
@@ -131,7 +132,10 @@ def pippenger_msm(
     n = scalars.shape[0]
 
     if window_bits is None:
-        window_bits = _estimate_optimal_window_bits(scalar_bits, n)
+        if n <= 4:
+            window_bits = min(16, scalar_bits)
+        else:
+            window_bits = _estimate_optimal_window_bits(scalar_bits, n)
 
     xyzz_dtype = _to_xyzz_dtype(points.dtype)
     zero = _ec_zeros((), xyzz_dtype)
@@ -145,12 +149,26 @@ def pippenger_msm(
     # Bitwise ops (>>, &) are not supported on prime field types.
     window_indices = _decompose_scalars(scalars, scalar_bits, window_bits)
 
+    # Pre-allocate zero arrays outside JIT so _ec_zeros (Python-level
+    # construction) does not become baked-in constants during tracing.
+    num_windows = (scalar_bits + window_bits - 1) // window_bits
+    num_buckets = (1 << window_bits) - 1
+    window_sums_init = _ec_zeros(num_windows, xyzz_dtype)
+    buckets_init = _ec_zeros(num_buckets, xyzz_dtype)
+
     if num_chunks <= 1:
-        return _pippenger_msm(window_indices, points, zero, scalar_bits, window_bits)
+        return _pippenger_msm(
+            window_indices,
+            points,
+            zero,
+            window_sums_init,
+            buckets_init,
+            scalar_bits,
+            window_bits,
+        )
 
     chunk_size = math.ceil(n / num_chunks)
     pad_total = chunk_size * num_chunks
-    num_windows = window_indices.shape[0]
 
     # Pad window_indices and points
     wi_padded = jnp.zeros((num_windows, pad_total), dtype=jnp.int32)
@@ -163,7 +181,15 @@ def pippenger_msm(
     points_chunks = points_padded.reshape(num_chunks, chunk_size)
 
     chunk_results = jax.vmap(
-        lambda wi, p: _pippenger_msm(wi, p, zero, scalar_bits, window_bits)
+        lambda wi, p: _pippenger_msm(
+            wi,
+            p,
+            zero,
+            window_sums_init,
+            buckets_init,
+            scalar_bits,
+            window_bits,
+        )
     )(
         wi_chunks.transpose(1, 0, 2),  # [num_chunks, num_windows, chunk_size]
         points_chunks,
@@ -198,10 +224,13 @@ def _estimate_optimal_window_bits(scalar_bits: int, num_points: int) -> int:
     return best_s
 
 
+@partial(jax.jit, static_argnums=(5, 6))
 def _pippenger_msm(
     window_indices: Array,
     points: Array,
     zero: Array,
+    window_sums_init: Array,
+    buckets_init: Array,
     scalar_bits: int,
     window_bits: int,
 ) -> Array:
@@ -211,6 +240,8 @@ def _pippenger_msm(
         window_indices: ``[num_windows, n]`` int32 array of window slices.
         points: ``[n]`` EC point array (XYZZ representation).
         zero: Scalar identity point (XYZZ, zero-initialized).
+        window_sums_init: Pre-allocated ``[num_windows]`` zero XYZZ array.
+        buckets_init: Pre-allocated ``[num_buckets]`` zero XYZZ array.
         scalar_bits: Number of bits per scalar.
         window_bits: Window size in bits.
 
@@ -221,14 +252,10 @@ def _pippenger_msm(
     num_windows = (scalar_bits + window_bits - 1) // window_bits
     num_buckets = (1 << window_bits) - 1
 
-    xyzz_dtype = zero.dtype
-
-    # Window sums: [num_windows] XYZZ points
-    window_sums = _ec_zeros(num_windows, xyzz_dtype)
+    window_sums = window_sums_init
 
     def _process_window(w, window_sums):
-        # 1-D bucket array per window
-        buckets = _ec_zeros(num_buckets, xyzz_dtype)
+        buckets = buckets_init
 
         # Accumulate all n points for this window
         def _acc_point(i, buckets):
