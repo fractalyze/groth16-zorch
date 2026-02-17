@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rabbitsnark"
 version = "0.1.0"
-description = "Python implementation of circom wtns and zkey parsers"
+description = "Groth16 prover in Python using Zorch (circom/snarkjs compatible)"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
@@ -23,6 +23,9 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
+
+[project.scripts]
+rabbitsnark = "rabbitsnark.cli:main"
 
 [project.optional-dependencies]
 dev = [
