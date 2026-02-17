@@ -23,6 +23,8 @@ from enum import IntEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from zk_dtypes import bn254_sf_mont
+
 from ..base.buffer import ReadOnlyBuffer
 from ..base.modulus import Modulus
 from ..base.sections import Sections
@@ -184,8 +186,14 @@ class ZKeyV1(ZKey):
         return self.header_groth.vkey
 
     @classmethod
-    def read(cls, buffer: ReadOnlyBuffer) -> ZKeyV1:
-        """Read a v1 zkey file from the buffer."""
+    def read(cls, buffer: ReadOnlyBuffer, scalar_dtype: type = bn254_sf_mont) -> ZKeyV1:
+        """Read a v1 zkey file from the buffer.
+
+        Args:
+            buffer: The buffer to read from.
+            scalar_dtype: Scalar field dtype for Montgomery reduction
+                (default: ``bn254_sf_mont``).
+        """
         sections = Sections(buffer, zkey_section_type_to_string)
         sections.read()
 
@@ -205,7 +213,6 @@ class ZKeyV1(ZKey):
         base_field_size = len(header_groth.q.bytes_data)
         scalar_field_size = len(header_groth.r.bytes_data)
         base_field_modulus = header_groth.q.to_int()
-        scalar_field_modulus = header_groth.r.to_int()
 
         # Read IC section
         sections.move_to(ZKeySectionType.IC)
@@ -217,7 +224,7 @@ class ZKeyV1(ZKey):
         sections.move_to(ZKeySectionType.COEFFICIENTS)
         num_coefficients = buffer.read_uint32()
         coefficients = [
-            Coefficient.read(buffer, scalar_field_size, scalar_field_modulus)
+            Coefficient.read(buffer, scalar_field_size, scalar_dtype)
             for _ in range(num_coefficients)
         ]
 
@@ -277,11 +284,13 @@ class ZKeyV1(ZKey):
         return [G2Point.read(buffer, field_size, modulus) for _ in range(count)]
 
 
-def parse_zkey(path: str | Path) -> ZKey:
+def parse_zkey(path: str | Path, scalar_dtype: type = bn254_sf_mont) -> ZKey:
     """Parse a zkey file from the given path.
 
     Args:
         path: Path to the zkey file.
+        scalar_dtype: Scalar field dtype for Montgomery reduction
+            (default: ``bn254_sf_mont``).
 
     Returns:
         A ZKey object containing the parsed data.
@@ -297,6 +306,6 @@ def parse_zkey(path: str | Path) -> ZKey:
 
     version = buffer.read_uint32()
     if version == 1:
-        return ZKeyV1.read(buffer)
+        return ZKeyV1.read(buffer, scalar_dtype)
     else:
         raise ValueError(f"Unsupported version: expected 1, got {version}")

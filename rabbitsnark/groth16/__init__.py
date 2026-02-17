@@ -1,4 +1,4 @@
-# Copyright 2025 The RabbitSNARK Authors.
+# Copyright 2026 The RabbitSNARK Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,17 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# ==============================================================================
 
-"""RabbitSNARK Python library for circom file parsing and ZK primitives."""
+"""Groth16 zero-knowledge proof generation."""
 
-__version__ = "0.1.0"
-
-from rabbitsnark import groth16, msm, ntt, spmv
+from .proof import Groth16Proof, write_public_signals
+from .prover import CompiledProver, compile
 
 __all__ = [
-    "__version__",
-    "groth16",
-    "msm",
-    "ntt",
-    "spmv",
+    "CompiledProver",
+    "Groth16Proof",
+    "compile",
+    "write_public_signals",
 ]

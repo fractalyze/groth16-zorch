@@ -22,7 +22,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from zk_dtypes import bn254_g1_affine, bn254_g2_affine
+from zk_dtypes import (
+    bn254_g1_affine,
+    bn254_g1_affine_mont,
+    bn254_g2_affine,
+    bn254_g2_affine_mont,
+)
 
 if TYPE_CHECKING:
     from ..base.buffer import ReadOnlyBuffer
@@ -52,10 +57,12 @@ def _parse_g2_repr(s: str) -> tuple[tuple[int, int], tuple[int, int]]:
 class G1Point:
     """A point on the G1 curve (affine coordinates) using zk_dtypes.
 
-    The point is stored internally in Montgomery form using bn254_g1_affine dtype.
+    Points parsed from binary data use the Montgomery dtype so that
+    ``str()`` converts raw Montgomery bytes to standard-form display.
+    Points constructed from integers use the standard dtype directly.
     """
 
-    _data: np.ndarray  # dtype=bn254_g1_affine, shape=()
+    _data: np.ndarray  # dtype=bn254_g1_affine or bn254_g1_affine_mont, shape=()
 
     @property
     def x(self) -> int:
@@ -79,19 +86,18 @@ class G1Point:
             modulus: The base field modulus (unused, kept for API compatibility).
         """
         raw_bytes = buffer.read_bytes(field_size * 2)
-        data = np.frombuffer(raw_bytes, dtype=bn254_g1_affine)[0]
+        # Zkey stores coordinates in Montgomery form; use the _mont dtype
+        # so that str() converts to standard form for display.
+        data = np.frombuffer(raw_bytes, dtype=bn254_g1_affine_mont)[0]
         return cls(data)
 
     @classmethod
     def from_ints(cls, x: int, y: int) -> G1Point:
-        """Create a G1Point from integer coordinates (for testing).
-
-        The x and y values are stored directly without conversion, using the
-        standard form dtype so that the string representation matches the input.
-        """
+        """Create a G1Point from standard-form integer coordinates (for testing)."""
         x_bytes = x.to_bytes(32, "little")
         y_bytes = y.to_bytes(32, "little")
         raw_bytes = x_bytes + y_bytes
+        # Use the standard dtype so str() returns the values as-is.
         data = np.frombuffer(raw_bytes, dtype=bn254_g1_affine)[0]
         return cls(data)
 
@@ -102,7 +108,6 @@ class G1Point:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, G1Point):
             return NotImplemented
-        # Compare Montgomery form values (via string repr) since raw bytes differ
         return self.x == other.x and self.y == other.y
 
     def __hash__(self) -> int:
@@ -117,10 +122,12 @@ class G2Point:
     """
     A point on the G2 curve (affine coordinates with extension field) using zk_dtypes.
 
-    The point is stored internally in Montgomery form using bn254_g2_affine dtype.
+    Points parsed from binary data use the Montgomery dtype so that
+    ``str()`` converts raw Montgomery bytes to standard-form display.
+    Points constructed from integers use the standard dtype directly.
     """
 
-    _data: np.ndarray  # dtype=bn254_g2_affine, shape=()
+    _data: np.ndarray  # dtype=bn254_g2_affine or bn254_g2_affine_mont, shape=()
 
     @property
     def x(self) -> tuple[int, int]:
@@ -144,21 +151,20 @@ class G2Point:
             modulus: The base field modulus (unused, kept for API compatibility).
         """
         raw_bytes = buffer.read_bytes(field_size * 4)
-        data = np.frombuffer(raw_bytes, dtype=bn254_g2_affine)[0]
+        # Zkey stores coordinates in Montgomery form; use the _mont dtype
+        # so that str() converts to standard form for display.
+        data = np.frombuffer(raw_bytes, dtype=bn254_g2_affine_mont)[0]
         return cls(data)
 
     @classmethod
     def from_ints(cls, x: tuple[int, int], y: tuple[int, int]) -> G2Point:
-        """Create a G2Point from integer coordinates (for testing).
-
-        The x and y values are stored directly without conversion, using the
-        standard form dtype so that the string representation matches the input.
-        """
+        """Create a G2Point from standard-form integer coordinates (for testing)."""
         x0_bytes = x[0].to_bytes(32, "little")
         x1_bytes = x[1].to_bytes(32, "little")
         y0_bytes = y[0].to_bytes(32, "little")
         y1_bytes = y[1].to_bytes(32, "little")
         raw_bytes = x0_bytes + x1_bytes + y0_bytes + y1_bytes
+        # Use the standard dtype so str() returns the values as-is.
         data = np.frombuffer(raw_bytes, dtype=bn254_g2_affine)[0]
         return cls(data)
 
@@ -169,7 +175,6 @@ class G2Point:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, G2Point):
             return NotImplemented
-        # Compare Montgomery form values (via string repr) since raw bytes differ
         return self.x == other.x and self.y == other.y
 
     def __hash__(self) -> int:
