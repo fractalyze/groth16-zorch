@@ -27,11 +27,12 @@ Example usage:
 
 from .csr_matrix import CSRMatrix
 from .r1cs import build_r1cs_matrices, witness_to_montgomery
-from .spmv import spmv
+from .spmv import _spmv_kernel, spmv
 
 __all__ = [
     "CSRMatrix",
     "build_r1cs_matrices",
     "spmv",
     "witness_to_montgomery",
+    "_spmv_kernel",
 ]
