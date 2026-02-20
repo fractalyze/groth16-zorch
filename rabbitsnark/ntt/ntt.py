@@ -218,6 +218,22 @@ class NTT:
             _twiddle_cache[self.DTYPE] = self._compute_twiddles()
         return _twiddle_cache[self.DTYPE]
 
+    def get_twiddle_arrays(self, n: int) -> tuple[Array, Array, Array]:
+        """Return cached (fwd_roots, inv_roots, inv_n) for size n.
+
+        These are the full root-of-unity arrays suitable for extracting
+        per-stage twiddles via static strided slicing inside JIT.
+
+        Args:
+            n: NTT size (must be a power of 2).
+
+        Returns:
+            Tuple of (forward_roots, inverse_roots, inv_n).
+        """
+        log_n = int(math.log2(n))
+        all_tw, all_inv_tw, all_inv_deg = self._get_twiddles()
+        return all_tw[log_n - 1], all_inv_tw[log_n - 1], all_inv_deg[log_n - 1]
+
     def forward(self, coeffs: Array) -> Array:
         """Compute forward NTT (Cooley-Tukey decimation-in-time).
 

@@ -15,16 +15,15 @@
 
 """Coefficient representation for R1CS constraints.
 
-Note: Coefficients in zkey files are stored in double Montgomery form,
-which requires applying Montgomery conversion twice.
+Coefficients in zkey files are stored in double Montgomery form (aR²).
+We use zk_dtypes' C++ Montgomery reduction via ``from_raw()`` to convert
+back to standard form with two reductions.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-
-from zk_dtypes import from_montgomery
 
 if TYPE_CHECKING:
     from ..base.buffer import ReadOnlyBuffer
@@ -50,20 +49,23 @@ class Coefficient:
     value: int  # The coefficient value (in standard form)
 
     @classmethod
-    def read(cls, buffer: ReadOnlyBuffer, field_size: int, modulus: int) -> Coefficient:
+    def read(cls, buffer: ReadOnlyBuffer, field_size: int, dtype: type) -> Coefficient:
         """Read a coefficient from the buffer.
 
         Args:
             buffer: The buffer to read from.
             field_size: Size of the field element in bytes.
-            modulus: The scalar field modulus for Montgomery conversion.
+            dtype: The scalar field dtype (e.g., ``bn254_sf_mont``) whose
+                ``from_raw()`` performs C++ Montgomery reduction.
         """
         matrix = buffer.read_uint32()
         constraint = buffer.read_uint32()
         signal = buffer.read_uint32()
-        # Coefficient values are stored in double Montgomery form in zkey files
+        # Coefficient values are stored in double Montgomery form (aR²) in zkey
+        # files. Two C++ Montgomery reductions convert to standard form:
+        #   aR² → aR → a
         value_double_mont = buffer.read_field_element(field_size)
-        value = from_montgomery(from_montgomery(value_double_mont, modulus), modulus)
+        value = int(dtype.from_raw(int(dtype.from_raw(value_double_mont))))
         return cls(matrix, constraint, signal, value)
 
     @classmethod

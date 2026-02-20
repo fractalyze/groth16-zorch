@@ -13,26 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Sparse matrix-vector multiplication (SpMV) for BN254 scalar field.
+"""Groth16 zero-knowledge proof generation."""
 
-Provides CSR sparse matrix construction from R1CS constraints and
-vectorized SpMV for Groth16 proving (Az = A * z, Bz = B * z).
-
-Example usage:
-    >>> from rabbitsnark.spmv import build_r1cs_matrices, spmv
-    >>> A, B = build_r1cs_matrices(zkey, bn254_sf_mont)
-    >>> Az = spmv(A, z_mont)
-    >>> Bz = spmv(B, z_mont)
-"""
-
-from .csr_matrix import CSRMatrix
-from .r1cs import build_r1cs_matrices, witness_to_montgomery
-from .spmv import _spmv_kernel, spmv
+from .proof import Groth16Proof, write_public_signals
+from .prover import CompiledProver, compile
 
 __all__ = [
-    "CSRMatrix",
-    "build_r1cs_matrices",
-    "spmv",
-    "witness_to_montgomery",
-    "_spmv_kernel",
+    "CompiledProver",
+    "Groth16Proof",
+    "compile",
+    "write_public_signals",
 ]
