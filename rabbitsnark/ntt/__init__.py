@@ -20,16 +20,13 @@ used in zero-knowledge proofs.
 
 Example usage:
     >>> from rabbitsnark.ntt import NTT, BN254_FR_ROOT_OF_UNITY
-    >>> import jax.numpy as jnp
-    >>> from zk_dtypes import bn254_sf_mont
-    >>>
     >>> ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
-    >>> coeffs = jnp.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=bn254_sf_mont)
-    >>> evals = ntt.forward(coeffs)  # Forward NTT
-    >>> recovered = ntt.inverse(evals)  # Inverse NTT
+    >>> fwd_tw, inv_tw, inv_n = ntt.get_stage_twiddles(log_n)
+    >>> evals = _forward_ntt(coeffs, log_n, *fwd_tw)
+    >>> coeffs = _inverse_ntt(evals, inv_n, log_n, *inv_tw)
 """
 
-from .ntt import NTT, _forward_ntt, _inverse_ntt, batch_ntt
+from .ntt import NTT, _forward_ntt, _inverse_ntt
 
 # Primitive 2²⁸-th root of unity in BN254 Fr (standard form)
 # Computed as: 7^((p - 1) / 2²⁸) mod p
@@ -40,7 +37,6 @@ BN254_FR_ROOT_OF_UNITY = (
 __all__ = [
     "NTT",
     "BN254_FR_ROOT_OF_UNITY",
-    "batch_ntt",
     "_forward_ntt",
     "_inverse_ntt",
 ]

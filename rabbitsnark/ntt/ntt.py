@@ -37,14 +37,12 @@ Montgomery Form Notes:
 
 from __future__ import annotations
 
-import math
 from functools import partial
 from typing import TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
 from jax import jit, lax
-from jax.tree_util import register_pytree_node_class
 from zk_dtypes import pfinfo
 
 if TYPE_CHECKING:
@@ -141,7 +139,6 @@ def _build_twiddle_array(one: Array, omega: Array, log_size: int) -> Array:
     return arr
 
 
-@register_pytree_node_class
 class NTT:
     """NTT (Number Theoretic Transform) for prime fields.
 
@@ -220,16 +217,6 @@ class NTT:
             _twiddle_cache[self.DTYPE] = self._compute_twiddles()
         return _twiddle_cache[self.DTYPE]
 
-    def _get_fwd_stage_twiddles(self, log_n: int) -> tuple[Array, ...]:
-        """Return cached per-stage forward twiddles for size 2^log_n."""
-        _, all_fwd_stages, _ = self._get_twiddles()
-        return all_fwd_stages[log_n - 1]
-
-    def _get_inv_stage_twiddles(self, log_n: int) -> tuple[Array, ...]:
-        """Return cached per-stage inverse twiddles for size 2^log_n."""
-        _, _, all_inv_stages = self._get_twiddles()
-        return all_inv_stages[log_n - 1]
-
     def get_stage_twiddles(
         self, log_n: int
     ) -> tuple[tuple[Array, ...], tuple[Array, ...], Array]:
@@ -243,102 +230,3 @@ class NTT:
         """
         all_inv_deg, all_fwd, all_inv = self._get_twiddles()
         return all_fwd[log_n - 1], all_inv[log_n - 1], all_inv_deg[log_n - 1]
-
-    def forward(self, coeffs: Array) -> Array:
-        """Compute forward NTT (Cooley-Tukey decimation-in-time).
-
-        Each butterfly stage is traced as a separate HLO fusion via an
-        unrolled Python ``for`` loop.
-
-        Butterfly operation (Cooley-Tukey):
-            A' = A + B * ω
-            B' = A - B * ω
-
-        Args:
-            coeffs: Input coefficients in standard order.
-
-        Returns:
-            NTT evaluations.
-        """
-        log_n = int(math.log2(coeffs.shape[0]))
-        fwd_stages = self._get_fwd_stage_twiddles(log_n)
-        return _forward_ntt(coeffs, log_n, *fwd_stages)
-
-    def inverse(self, evaluations: Array) -> Array:
-        """Compute inverse NTT (Gentleman-Sande decimation-in-frequency).
-
-        Each butterfly stage is traced as a separate HLO fusion via an
-        unrolled Python ``for`` loop.
-
-        Butterfly operation (Gentleman-Sande):
-            A' = A + B
-            B' = (A - B) * ω
-
-        Args:
-            evaluations: NTT evaluations.
-
-        Returns:
-            Polynomial coefficients in standard order.
-        """
-        log_n = int(math.log2(evaluations.shape[0]))
-        all_inv_deg, _, _ = self._get_twiddles()
-        inv_n = all_inv_deg[log_n - 1]
-        inv_stages = self._get_inv_stage_twiddles(log_n)
-        return _inverse_ntt(evaluations, inv_n, log_n, *inv_stages)
-
-    @staticmethod
-    def bit_reverse(data: Array) -> Array:
-        """Apply bit-reversal permutation along the first dimension.
-
-        For an array of size n (must be a power of 2), the element at index i
-        is moved to index bit_reverse(i, log₂(n)).
-
-        Args:
-            data: Input array whose first dimension size is a power of 2.
-
-        Returns:
-            Bit-reversed array.
-        """
-        return lax.bit_reverse(data, dimensions=[0])
-
-    def ntt(self, coeffs: Array, inverse: bool = False) -> Array:
-        """Unified NTT interface.
-
-        Args:
-            coeffs: Input array (coefficients for forward, evaluations for inverse).
-            inverse: If True, compute inverse NTT.
-
-        Returns:
-            Transformed array.
-        """
-        if inverse:
-            return self.inverse(coeffs)
-        return self.forward(coeffs)
-
-    def tree_flatten(self):
-        """Flatten for JAX pytree."""
-        return (), (self.DTYPE, self.ROOT_OF_UNITY)
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        """Unflatten from JAX pytree."""
-        dtype, root_of_unity = aux_data
-        return cls(dtype, root_of_unity)
-
-
-def batch_ntt(ntt_instance: NTT, batch: Array, inverse: bool = False) -> Array:
-    """Apply NTT to a batch of polynomials.
-
-    Applies NTT (or inverse NTT) to each row of the input array.
-    Each row is processed through the JIT-compiled NTT kernel.
-
-    Args:
-        ntt_instance: The NTT implementation to use.
-        batch: 2D array of shape (batch_size, poly_degree).
-        inverse: If True, compute inverse NTT.
-
-    Returns:
-        Transformed batch with same shape.
-    """
-    ntt_fn = ntt_instance.inverse if inverse else ntt_instance.forward
-    return jnp.stack([ntt_fn(batch[i]) for i in range(batch.shape[0])])

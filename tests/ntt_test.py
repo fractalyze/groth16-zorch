@@ -25,7 +25,8 @@ from zk_dtypes import bn254_sf_mont, pfinfo
 from rabbitsnark.ntt import (
     BN254_FR_ROOT_OF_UNITY,
     NTT,
-    batch_ntt,
+    _forward_ntt,
+    _inverse_ntt,
 )
 
 
@@ -107,27 +108,33 @@ class TestNTT(absltest.TestCase):
     def test_forward_ntt(self):
         """Test forward NTT matches naive O(n²) DFT."""
         coeffs = _random_field_elements(8, bn254_sf_mont)
+        log_n = 3
+        fwd_tw, _, _ = self.ntt.get_stage_twiddles(log_n)
 
         expected = _naive_ntt(coeffs, self.ntt)
-        actual = self.ntt.forward(coeffs)
+        actual = _forward_ntt(coeffs, log_n, *fwd_tw)
 
         _assert_eq(self, actual, expected)
 
     def test_inverse_ntt(self):
         """Test inverse NTT matches naive O(n²) inverse DFT."""
         evals = _random_field_elements(8, bn254_sf_mont, seed=99)
+        log_n = 3
+        _, inv_tw, inv_n = self.ntt.get_stage_twiddles(log_n)
 
         expected = _naive_intt(evals, self.ntt)
-        actual = self.ntt.inverse(evals)
+        actual = _inverse_ntt(evals, inv_n, log_n, *inv_tw)
 
         _assert_eq(self, actual, expected)
 
-    def test_ntt_unified_interface(self):
-        """Test the unified ntt() method."""
+    def test_roundtrip(self):
+        """Test forward then inverse NTT recovers original coefficients."""
         coeffs = _random_field_elements(4, bn254_sf_mont)
+        log_n = 2
+        fwd_tw, inv_tw, inv_n = self.ntt.get_stage_twiddles(log_n)
 
-        evals = self.ntt.ntt(coeffs, inverse=False)
-        recovered = self.ntt.ntt(evals, inverse=True)
+        evals = _forward_ntt(coeffs, log_n, *fwd_tw)
+        recovered = _inverse_ntt(evals, inv_n, log_n, *inv_tw)
 
         _assert_eq(self, recovered, coeffs)
 
@@ -142,69 +149,6 @@ class TestNTT(absltest.TestCase):
         # root^(2²⁷) should not equal 1 (primitive root check)
         result_half = pow(BN254_FR_ROOT_OF_UNITY, 1 << 27, p)
         self.assertNotEqual(result_half, 1)
-
-    def test_bit_reversal(self):
-        """Test bit reversal permutation."""
-        # For n=8, bit reversal should be: [0, 4, 2, 6, 1, 5, 3, 7]
-        coeffs = jnp.array(list(range(8)), dtype=bn254_sf_mont)
-        reversed_coeffs = self.ntt.bit_reverse(coeffs)
-        expected = jnp.array([0, 4, 2, 6, 1, 5, 3, 7], dtype=bn254_sf_mont)
-        _assert_eq(self, reversed_coeffs, expected)
-
-    def test_pytree_flatten_unflatten(self):
-        """Test JAX pytree registration."""
-        ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
-        children, aux_data = ntt.tree_flatten()
-        recovered = NTT.tree_unflatten(aux_data, children)
-
-        coeffs = _random_field_elements(4, bn254_sf_mont)
-        _assert_eq(self, ntt.forward(coeffs), recovered.forward(coeffs))
-
-
-class TestBatchNTT(absltest.TestCase):
-    """Tests for batch NTT operations."""
-
-    def setUp(self):
-        """Create NTT instance."""
-        self.ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
-
-    def test_batch_forward_ntt(self):
-        """Test batch forward NTT matches per-row naive NTT."""
-        batch = jnp.array(
-            [
-                _random_field_elements(4, bn254_sf_mont, seed=1),
-                _random_field_elements(4, bn254_sf_mont, seed=2),
-                _random_field_elements(4, bn254_sf_mont, seed=3),
-            ],
-        )
-
-        result = batch_ntt(self.ntt, batch, inverse=False)
-
-        for i in range(batch.shape[0]):
-            expected = _naive_ntt(batch[i], self.ntt)
-            _assert_eq(self, result[i], expected)
-
-    def test_batch_inverse_ntt(self):
-        """Test batch inverse NTT matches per-row naive INTT."""
-        batch = jnp.array(
-            [
-                _random_field_elements(4, bn254_sf_mont, seed=10),
-                _random_field_elements(4, bn254_sf_mont, seed=20),
-                _random_field_elements(4, bn254_sf_mont, seed=30),
-            ],
-        )
-
-        result = batch_ntt(self.ntt, batch, inverse=True)
-
-        for i in range(batch.shape[0]):
-            expected = _naive_intt(batch[i], self.ntt)
-            _assert_eq(self, result[i], expected)
-
-    def test_batch_ntt_preserves_shape(self):
-        """Test that batch NTT preserves array shape."""
-        batch = jnp.zeros((5, 16), dtype=bn254_sf_mont)
-        result = batch_ntt(self.ntt, batch, inverse=False)
-        self.assertEqual(result.shape, batch.shape)
 
 
 if __name__ == "__main__":
