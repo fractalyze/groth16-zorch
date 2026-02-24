@@ -73,7 +73,7 @@ from rabbitsnark.msm import (
     _pippenger_msm,
     _to_xyzz_dtype,
 )
-from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT, _forward_ntt, _inverse_ntt
+from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
 from rabbitsnark.spmv import build_r1cs_matrices
 from rabbitsnark.spmv.spmv import _spmv_kernel
 
@@ -123,9 +123,9 @@ class CompiledProver:
     ell_val_a: Array
     ell_col_b: Array
     ell_val_b: Array
-    # NTT arrays
-    fwd_roots: Array
-    inv_roots: Array
+    # NTT arrays (per-stage twiddles, pre-extracted)
+    fwd_stage_twiddles: tuple[Array, ...]
+    inv_stage_twiddles: tuple[Array, ...]
     inv_n: Array
     shift_powers: Array
     # Point arrays (XYZZ)
@@ -196,9 +196,9 @@ class CompiledProver:
             self.ell_val_a,
             self.ell_col_b,
             self.ell_val_b,
-            # NTT arrays
-            self.fwd_roots,
-            self.inv_roots,
+            # NTT arrays (per-stage twiddles)
+            self.fwd_stage_twiddles,
+            self.inv_stage_twiddles,
             self.inv_n,
             self.shift_powers,
             # Point arrays (XYZZ)
@@ -260,9 +260,9 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     # R1CS matrices -> ELL arrays
     matrix_a, matrix_b = build_r1cs_matrices(zkey, bn254_sf_mont)
 
-    # NTT twiddle arrays
+    # NTT per-stage twiddle arrays
     ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
-    fwd_roots, inv_roots, inv_n = ntt.get_twiddle_arrays(domain_size)
+    fwd_stage_twiddles, inv_stage_twiddles, inv_n = ntt.get_stage_twiddles(log_n)
 
     # Coset shift powers: [1, g, g^2, ..., g^(n-1)] where g = omega_{2n}
     # Pre-computed outside JIT (256-bit constants can't be created during JIT)
@@ -350,8 +350,8 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
         ell_val_a=matrix_a.ell_values,
         ell_col_b=matrix_b.ell_col_indices,
         ell_val_b=matrix_b.ell_values,
-        fwd_roots=fwd_roots,
-        inv_roots=inv_roots,
+        fwd_stage_twiddles=fwd_stage_twiddles,
+        inv_stage_twiddles=inv_stage_twiddles,
         inv_n=inv_n,
         shift_powers=shift_powers,
         pa1_xyzz=pa1_xyzz,
@@ -396,9 +396,9 @@ def _prove_core(
     ell_val_a: Array,
     ell_col_b: Array,
     ell_val_b: Array,
-    # NTT arrays
-    fwd_roots: Array,
-    inv_roots: Array,
+    # NTT arrays (per-stage twiddles)
+    fwd_stage_tw: tuple[Array, ...],
+    inv_stage_tw: tuple[Array, ...],
     inv_n: Array,
     shift_powers: Array,
     # Point arrays (XYZZ)
@@ -455,16 +455,14 @@ def _prove_core(
     cz = az * bz
 
     # IFFT x 3
-    inv_stage_tw = _extract_inv_stage_twiddles(inv_roots, n, log_n)
-    a_poly = _inverse_ntt(az, inv_n, log_n, *inv_stage_tw)
-    b_poly = _inverse_ntt(bz, inv_n, log_n, *inv_stage_tw)
-    c_poly = _inverse_ntt(cz, inv_n, log_n, *inv_stage_tw)
+    a_poly = NTT.inverse_ntt(az, inv_n, log_n, *inv_stage_tw)
+    b_poly = NTT.inverse_ntt(bz, inv_n, log_n, *inv_stage_tw)
+    c_poly = NTT.inverse_ntt(cz, inv_n, log_n, *inv_stage_tw)
 
     # Coset NTT x 3 (shift_powers pre-computed outside JIT)
-    fwd_stage_tw = _extract_fwd_stage_twiddles(fwd_roots, n, log_n)
-    a_coset = _forward_ntt(a_poly * shift_powers, log_n, *fwd_stage_tw)
-    b_coset = _forward_ntt(b_poly * shift_powers, log_n, *fwd_stage_tw)
-    c_coset = _forward_ntt(c_poly * shift_powers, log_n, *fwd_stage_tw)
+    a_coset = NTT.forward_ntt(a_poly * shift_powers, log_n, *fwd_stage_tw)
+    b_coset = NTT.forward_ntt(b_poly * shift_powers, log_n, *fwd_stage_tw)
+    c_coset = NTT.forward_ntt(c_poly * shift_powers, log_n, *fwd_stage_tw)
 
     # Quotient: h = a * b - c on coset
     h_evals_mont = a_coset * b_coset - c_coset
@@ -566,35 +564,6 @@ def _prove_core(
 # ---------------------------------------------------------------------------
 # JIT-internal helpers (called during trace of _prove_core)
 # ---------------------------------------------------------------------------
-
-
-def _extract_fwd_stage_twiddles(roots: Array, n: int, log_n: int) -> tuple[Array, ...]:
-    """Extract per-stage forward twiddles via static strided slicing.
-
-    Stage s needs roots[::stride][:half_m] where stride = n / 2^(s+1).
-    Uses Slice HLO, not gather.
-    """
-    stage_twiddles = []
-    for s in range(log_n):
-        half_m = 1 << s
-        stride = n // (2 * half_m)
-        tw = roots[::stride][:half_m]
-        stage_twiddles.append(tw)
-    return tuple(stage_twiddles)
-
-
-def _extract_inv_stage_twiddles(
-    inv_roots: Array, n: int, log_n: int
-) -> tuple[Array, ...]:
-    """Extract per-stage inverse twiddles via static strided slicing."""
-    stage_twiddles = []
-    for s in range(log_n):
-        actual_stage = log_n - 1 - s
-        half_m = 1 << actual_stage
-        stride = n // (2 * half_m)
-        tw = inv_roots[::stride][:half_m]
-        stage_twiddles.append(tw)
-    return tuple(stage_twiddles)
 
 
 def _build_shift_powers(shift: Array, log_n: int) -> Array:
