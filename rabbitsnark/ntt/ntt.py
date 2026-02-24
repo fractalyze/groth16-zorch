@@ -49,94 +49,8 @@ if TYPE_CHECKING:
     from jax import Array
 
 
-@partial(jit, static_argnums=(1,))
-def _forward_ntt(coeffs: Array, log_n: int, *stage_twiddles: Array) -> Array:
-    """JIT-compiled forward NTT kernel (Cooley-Tukey DIT).
-
-    Each butterfly stage is traced separately via an unrolled Python ``for``
-    loop (no WhileOp), allowing inter-stage fusion and parallelization.
-    Each stage uses reshape/slice/concatenate for the butterfly pattern.
-
-    Args:
-        coeffs: Input coefficients array of size n = 2^log_n.
-        log_n: log₂(n), static.
-        *stage_twiddles: Per-stage twiddle arrays. stage_twiddles[s] has
-            shape (2ˢ,) containing the roots for stage s.
-    """
-    n = coeffs.shape[0]
-
-    # DIT: bit-reverse input (keep native HLO BitReverse)
-    data = lax.bit_reverse(coeffs, dimensions=[0])
-    data = data[:, None]  # (n,) → (n, 1) for reshape butterfly
-
-    # Unrolled Cooley-Tukey DIT stages (Python for loop → no WhileOp)
-    for s in range(log_n):
-        block_size = 1 << (s + 1)
-        half_block = block_size // 2
-        num_blocks = n // block_size
-        tw = stage_twiddles[s][None, :, None]  # (1, half_block, 1)
-        blocks = data.reshape(num_blocks, block_size, 1)
-        top = blocks[:, :half_block, :]
-        bot = blocks[:, half_block:, :]
-        bot_tw = bot * tw
-        data = jnp.concatenate([top + bot_tw, top - bot_tw], axis=1).reshape(n, 1)
-
-    return data[:, 0]  # (n, 1) → (n,)
-
-
-@partial(jit, static_argnums=(2,))
-def _inverse_ntt(
-    evaluations: Array, inv_n: Array, log_n: int, *stage_twiddles: Array
-) -> Array:
-    """JIT-compiled inverse NTT kernel (Gentleman-Sande DIF).
-
-    Each butterfly stage is traced separately via an unrolled Python ``for``
-    loop (no WhileOp). Stages run from large blocks to small (DIF order).
-    Each stage uses reshape/slice/concatenate for the butterfly pattern.
-
-    Args:
-        evaluations: NTT evaluations array of size n = 2^log_n.
-        inv_n: Inverse of n for final scaling.
-        log_n: log₂(n), static.
-        *stage_twiddles: Per-stage inverse twiddle arrays. stage_twiddles[i]
-            corresponds to DIF stage i (large blocks first).
-    """
-    n = evaluations.shape[0]
-    data = evaluations[:, None]  # (n,) → (n, 1)
-
-    # Unrolled Gentleman-Sande DIF stages (large blocks → small)
-    for stage_idx in range(log_n):
-        s = log_n - 1 - stage_idx
-        block_size = 1 << (s + 1)
-        half_block = block_size // 2
-        num_blocks = n // block_size
-        tw = stage_twiddles[stage_idx][None, :, None]
-        blocks = data.reshape(num_blocks, block_size, 1)
-        top = blocks[:, :half_block, :]
-        bot = blocks[:, half_block:, :]
-        data = jnp.concatenate([top + bot, (top - bot) * tw], axis=1).reshape(n, 1)
-
-    # DIF: bit-reverse output (keep native HLO BitReverse)
-    data = lax.bit_reverse(data[:, 0], dimensions=[0])
-    return data * inv_n
-
-
 # Module-level twiddle cache keyed by dtype
 _twiddle_cache: dict[type, tuple[list, list, list]] = {}
-
-
-def _build_twiddle_array(one: Array, omega: Array, log_size: int) -> Array:
-    """Build [1, ω, ω², ..., ω^(2^log_size - 1)] via O(log_size) doublings.
-
-    Uses Montgomery multiplication through the ``*`` operator on field elements.
-    Only O(log_size) concatenations (safe for ZKX concat).
-    """
-    arr = jnp.array([one], dtype=one.dtype)
-    step = omega
-    for _ in range(log_size):
-        arr = jnp.concatenate([arr, arr * step])
-        step = step * step
-    return arr
 
 
 class NTT:
@@ -153,6 +67,100 @@ class NTT:
         pf = pfinfo(dtype)
         self.MODULUS = pf.modulus
         self.MAX_LOG_N = pf.two_adicity
+
+    # ------------------------------------------------------------------
+    # JIT-compiled NTT kernels
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    @partial(jit, static_argnums=(1,))
+    def forward_ntt(coeffs: Array, log_n: int, *stage_twiddles: Array) -> Array:
+        """JIT-compiled forward NTT kernel (Cooley-Tukey DIT).
+
+        Each butterfly stage is traced separately via an unrolled Python ``for``
+        loop (no WhileOp), allowing inter-stage fusion and parallelization.
+        Each stage uses reshape/slice/concatenate for the butterfly pattern.
+
+        Args:
+            coeffs: Input coefficients array of size n = 2^log_n.
+            log_n: log₂(n), static.
+            *stage_twiddles: Per-stage twiddle arrays. stage_twiddles[s] has
+                shape (2ˢ,) containing the roots for stage s.
+        """
+        n = coeffs.shape[0]
+
+        # DIT: bit-reverse input (keep native HLO BitReverse)
+        data = lax.bit_reverse(coeffs, dimensions=[0])
+        data = data[:, None]  # (n,) → (n, 1) for reshape butterfly
+
+        # Unrolled Cooley-Tukey DIT stages (Python for loop → no WhileOp)
+        for s in range(log_n):
+            block_size = 1 << (s + 1)
+            half_block = block_size // 2
+            num_blocks = n // block_size
+            tw = stage_twiddles[s][None, :, None]  # (1, half_block, 1)
+            blocks = data.reshape(num_blocks, block_size, 1)
+            top = blocks[:, :half_block, :]
+            bot = blocks[:, half_block:, :]
+            bot_tw = bot * tw
+            data = jnp.concatenate([top + bot_tw, top - bot_tw], axis=1).reshape(n, 1)
+
+        return data[:, 0]  # (n, 1) → (n,)
+
+    @staticmethod
+    @partial(jit, static_argnums=(2,))
+    def inverse_ntt(
+        evaluations: Array, inv_n: Array, log_n: int, *stage_twiddles: Array
+    ) -> Array:
+        """JIT-compiled inverse NTT kernel (Gentleman-Sande DIF).
+
+        Each butterfly stage is traced separately via an unrolled Python ``for``
+        loop (no WhileOp). Stages run from large blocks to small (DIF order).
+        Each stage uses reshape/slice/concatenate for the butterfly pattern.
+
+        Args:
+            evaluations: NTT evaluations array of size n = 2^log_n.
+            inv_n: Inverse of n for final scaling.
+            log_n: log₂(n), static.
+            *stage_twiddles: Per-stage inverse twiddle arrays. stage_twiddles[i]
+                corresponds to DIF stage i (large blocks first).
+        """
+        n = evaluations.shape[0]
+        data = evaluations[:, None]  # (n,) → (n, 1)
+
+        # Unrolled Gentleman-Sande DIF stages (large blocks → small)
+        for stage_idx in range(log_n):
+            s = log_n - 1 - stage_idx
+            block_size = 1 << (s + 1)
+            half_block = block_size // 2
+            num_blocks = n // block_size
+            tw = stage_twiddles[stage_idx][None, :, None]
+            blocks = data.reshape(num_blocks, block_size, 1)
+            top = blocks[:, :half_block, :]
+            bot = blocks[:, half_block:, :]
+            data = jnp.concatenate([top + bot, (top - bot) * tw], axis=1).reshape(n, 1)
+
+        # DIF: bit-reverse output (keep native HLO BitReverse)
+        data = lax.bit_reverse(data[:, 0], dimensions=[0])
+        return data * inv_n
+
+    # ------------------------------------------------------------------
+    # Twiddle factor computation and caching
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_twiddle_array(one: Array, omega: Array, log_size: int) -> Array:
+        """Build [1, ω, ω², ..., ω^(2^log_size - 1)] via O(log_size) doublings.
+
+        Uses Montgomery multiplication through the ``*`` operator on field
+        elements. Only O(log_size) concatenations (safe for ZKX concat).
+        """
+        arr = jnp.array([one], dtype=one.dtype)
+        step = omega
+        for _ in range(log_size):
+            arr = jnp.concatenate([arr, arr * step])
+            step = step * step
+        return arr
 
     def _compute_twiddles(self) -> tuple[list, list, list]:
         """Compute per-stage twiddle factors for all supported NTT sizes.
@@ -196,7 +204,7 @@ class NTT:
                 fwd_stages = []
                 for s in range(log_n):
                     omega_s = dtype(omega_ints[s + 1])
-                    fwd_stages.append(_build_twiddle_array(one, omega_s, s))
+                    fwd_stages.append(self._build_twiddle_array(one, omega_s, s))
                 all_fwd_stages.append(tuple(fwd_stages))
 
                 # Inverse DIF: stages in reverse order, using inverse roots
@@ -205,7 +213,7 @@ class NTT:
                     actual_stage = log_n - 1 - stage_idx
                     omega_s_inv = one / dtype(omega_ints[actual_stage + 1])
                     inv_stages.append(
-                        _build_twiddle_array(one, omega_s_inv, actual_stage)
+                        self._build_twiddle_array(one, omega_s_inv, actual_stage)
                     )
                 all_inv_stages.append(tuple(inv_stages))
 

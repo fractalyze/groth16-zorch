@@ -22,12 +22,7 @@ import jax.numpy as jnp
 from absl.testing import absltest
 from zk_dtypes import bn254_sf_mont, pfinfo
 
-from rabbitsnark.ntt import (
-    BN254_FR_ROOT_OF_UNITY,
-    NTT,
-    _forward_ntt,
-    _inverse_ntt,
-)
+from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
 
 
 def _assert_eq(test_case, actual, expected):
@@ -112,7 +107,7 @@ class TestNTT(absltest.TestCase):
         fwd_tw, _, _ = self.ntt.get_stage_twiddles(log_n)
 
         expected = _naive_ntt(coeffs, self.ntt)
-        actual = _forward_ntt(coeffs, log_n, *fwd_tw)
+        actual = NTT.forward_ntt(coeffs, log_n, *fwd_tw)
 
         _assert_eq(self, actual, expected)
 
@@ -123,7 +118,7 @@ class TestNTT(absltest.TestCase):
         _, inv_tw, inv_n = self.ntt.get_stage_twiddles(log_n)
 
         expected = _naive_intt(evals, self.ntt)
-        actual = _inverse_ntt(evals, inv_n, log_n, *inv_tw)
+        actual = NTT.inverse_ntt(evals, inv_n, log_n, *inv_tw)
 
         _assert_eq(self, actual, expected)
 
@@ -133,8 +128,8 @@ class TestNTT(absltest.TestCase):
         log_n = 2
         fwd_tw, inv_tw, inv_n = self.ntt.get_stage_twiddles(log_n)
 
-        evals = _forward_ntt(coeffs, log_n, *fwd_tw)
-        recovered = _inverse_ntt(evals, inv_n, log_n, *inv_tw)
+        evals = NTT.forward_ntt(coeffs, log_n, *fwd_tw)
+        recovered = NTT.inverse_ntt(evals, inv_n, log_n, *inv_tw)
 
         _assert_eq(self, recovered, coeffs)
 

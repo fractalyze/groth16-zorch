@@ -73,7 +73,7 @@ from rabbitsnark.msm import (
     _pippenger_msm,
     _to_xyzz_dtype,
 )
-from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT, _forward_ntt, _inverse_ntt
+from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
 from rabbitsnark.spmv import build_r1cs_matrices
 from rabbitsnark.spmv.spmv import _spmv_kernel
 
@@ -455,14 +455,14 @@ def _prove_core(
     cz = az * bz
 
     # IFFT x 3
-    a_poly = _inverse_ntt(az, inv_n, log_n, *inv_stage_tw)
-    b_poly = _inverse_ntt(bz, inv_n, log_n, *inv_stage_tw)
-    c_poly = _inverse_ntt(cz, inv_n, log_n, *inv_stage_tw)
+    a_poly = NTT.inverse_ntt(az, inv_n, log_n, *inv_stage_tw)
+    b_poly = NTT.inverse_ntt(bz, inv_n, log_n, *inv_stage_tw)
+    c_poly = NTT.inverse_ntt(cz, inv_n, log_n, *inv_stage_tw)
 
     # Coset NTT x 3 (shift_powers pre-computed outside JIT)
-    a_coset = _forward_ntt(a_poly * shift_powers, log_n, *fwd_stage_tw)
-    b_coset = _forward_ntt(b_poly * shift_powers, log_n, *fwd_stage_tw)
-    c_coset = _forward_ntt(c_poly * shift_powers, log_n, *fwd_stage_tw)
+    a_coset = NTT.forward_ntt(a_poly * shift_powers, log_n, *fwd_stage_tw)
+    b_coset = NTT.forward_ntt(b_poly * shift_powers, log_n, *fwd_stage_tw)
+    c_coset = NTT.forward_ntt(c_poly * shift_powers, log_n, *fwd_stage_tw)
 
     # Quotient: h = a * b - c on coset
     h_evals_mont = a_coset * b_coset - c_coset
