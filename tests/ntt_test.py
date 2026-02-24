@@ -66,7 +66,7 @@ def _naive_ntt(coeffs, ntt_instance):
 
     result = []
     for k in range(n):
-        val = dtype(0)
+        val = jnp.zeros((), dtype=dtype)
         for j in range(n):
             val = val + coeffs[j] * omega_powers[(j * k) % n]
         result.append(val)
@@ -91,7 +91,7 @@ def _naive_intt(evals, ntt_instance):
     inv_n = one / dtype(n)
     result = []
     for k in range(n):
-        val = dtype(0)
+        val = jnp.zeros((), dtype=dtype)
         for j in range(n):
             val = val + evals[j] * omega_inv_powers[(j * k) % n]
         result.append(val * inv_n)
