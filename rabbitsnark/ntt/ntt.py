@@ -124,7 +124,21 @@ def _inverse_ntt(
 
 
 # Module-level twiddle cache keyed by dtype
-_twiddle_cache: dict[type, tuple[list, list, list, list, list]] = {}
+_twiddle_cache: dict[type, tuple[list, list, list]] = {}
+
+
+def _build_twiddle_array(one: Array, omega: Array, log_size: int) -> Array:
+    """Build [1, ω, ω², ..., ω^(2^log_size - 1)] via O(log_size) doublings.
+
+    Uses Montgomery multiplication through the ``*`` operator on field elements.
+    Only O(log_size) concatenations (safe for ZKX concat).
+    """
+    arr = jnp.array([one], dtype=one.dtype)
+    step = omega
+    for _ in range(log_size):
+        arr = jnp.concatenate([arr, arr * step])
+        step = step * step
+    return arr
 
 
 @register_pytree_node_class
@@ -143,34 +157,27 @@ class NTT:
         self.MODULUS = pf.modulus
         self.MAX_LOG_N = pf.two_adicity
 
-    def _compute_twiddles(self) -> tuple[list, list, list, list, list]:
-        """Compute twiddle factors for all supported NTT sizes.
+    def _compute_twiddles(self) -> tuple[list, list, list]:
+        """Compute per-stage twiddle factors for all supported NTT sizes.
 
         For each size n = 2^k (k = 1, ..., practical_max), compute:
-        - Forward twiddles: [ω⁰, ω¹, ..., ω^(n - 1)]
-          where ω is an n-th root of unity
-        - Inverse twiddles: [ω⁻⁰, ω⁻¹, ..., ω^(-(n - 1))]
-        - Inverse degree: 1 / n for scaling the inverse transform
         - Forward per-stage twiddles: tuple of per-stage arrays for DIT
         - Inverse per-stage twiddles: tuple of per-stage arrays for DIF
+        - Inverse degree: 1 / n for scaling the inverse transform
 
-        Per-stage twiddle arrays are extracted via static strided slicing
-        (Slice HLO, not gather) for the unrolled NTT kernels.
-
-        Uses Python big-integer arithmetic for twiddle generation to avoid
-        a ZKX concatenation bug (segfault at >= 2¹⁴ elements from repeated
-        concat). Only the final arrays are converted to JAX field elements.
+        Uses zk_dtypes Montgomery multiplication (``*`` operator on field
+        elements) and O(log n) doubling for twiddle array construction.
 
         Returns:
-            Tuple of (twiddles, inv_twiddles, inv_degrees,
-            fwd_stage_twiddles, inv_stage_twiddles).
+            Tuple of (inv_degrees, fwd_stage_twiddles, inv_stage_twiddles).
         """
         # Limit precomputation to 2²⁰ for memory efficiency
         practical_max_log_n = min(self.MAX_LOG_N, 20)
         p = self.MODULUS
+        dtype = self.DTYPE
 
-        # Compute the 2^practical_max_log_n-th root from the 2^MAX_LOG_N-th root,
-        # then derive smaller roots by squaring.  omega_ints[k] = primitive 2^k-th root.
+        # Compute omega_ints[k] = primitive 2^k-th root (Python int).
+        # Start from 2^MAX_LOG_N-th root, then derive smaller roots by squaring.
         max_omega = pow(
             self.ROOT_OF_UNITY, 1 << (self.MAX_LOG_N - practical_max_log_n), p
         )
@@ -180,91 +187,62 @@ class NTT:
             omega_ints[k] = pow(omega_ints[k + 1], 2, p)
 
         with jax.ensure_compile_time_eval():
-            all_twiddles = []
-            all_inv_twiddles = []
+            one = dtype(1)
             all_inv_degrees = []
             all_fwd_stages = []
             all_inv_stages = []
 
             for log_n in range(1, practical_max_log_n + 1):
-                n = 1 << log_n
-                omega = omega_ints[log_n]
-                omega_inv = pow(omega, p - 2, p)
+                all_inv_degrees.append(one / dtype(1 << log_n))
 
-                # Build twiddle arrays via Python big-int arithmetic:
-                #   tw[i] = omega^i mod p
-                tw = [0] * n
-                tw_inv = [0] * n
-                tw[0] = 1
-                tw_inv[0] = 1
-                for i in range(1, n):
-                    tw[i] = tw[i - 1] * omega % p
-                    tw_inv[i] = tw_inv[i - 1] * omega_inv % p
-
-                twiddles = jnp.array(tw, dtype=self.DTYPE)
-                inv_twiddles = jnp.array(tw_inv, dtype=self.DTYPE)
-                inv_deg = jnp.array([pow(n, p - 2, p)], dtype=self.DTYPE)[0]
-
-                all_twiddles.append(twiddles)
-                all_inv_twiddles.append(inv_twiddles)
-                all_inv_degrees.append(inv_deg)
-
-                # Forward DIT: stage s needs roots[::stride][:half_m]
+                # Forward DIT: stage s uses 2^(s + 1)-th root of unity
                 fwd_stages = []
                 for s in range(log_n):
-                    half_m = 1 << s
-                    stride = n // (2 * half_m)
-                    fwd_stages.append(twiddles[::stride][:half_m])
+                    omega_s = dtype(omega_ints[s + 1])
+                    fwd_stages.append(_build_twiddle_array(one, omega_s, s))
                 all_fwd_stages.append(tuple(fwd_stages))
 
-                # Inverse DIF: stages run in reverse order
+                # Inverse DIF: stages in reverse order, using inverse roots
                 inv_stages = []
                 for stage_idx in range(log_n):
                     actual_stage = log_n - 1 - stage_idx
-                    half_m = 1 << actual_stage
-                    stride = n // (2 * half_m)
-                    inv_stages.append(inv_twiddles[::stride][:half_m])
+                    omega_s_inv = one / dtype(omega_ints[actual_stage + 1])
+                    inv_stages.append(
+                        _build_twiddle_array(one, omega_s_inv, actual_stage)
+                    )
                 all_inv_stages.append(tuple(inv_stages))
 
-        return (
-            all_twiddles,
-            all_inv_twiddles,
-            all_inv_degrees,
-            all_fwd_stages,
-            all_inv_stages,
-        )
+        return all_inv_degrees, all_fwd_stages, all_inv_stages
 
-    def _get_twiddles(self) -> tuple[list, list, list, list, list]:
+    def _get_twiddles(self) -> tuple[list, list, list]:
         """Get or compute cached twiddle factors."""
         if self.DTYPE not in _twiddle_cache:
             _twiddle_cache[self.DTYPE] = self._compute_twiddles()
         return _twiddle_cache[self.DTYPE]
 
-    def get_twiddle_arrays(self, n: int) -> tuple[Array, Array, Array]:
-        """Return cached (fwd_roots, inv_roots, inv_n) for size n.
-
-        These are the full root-of-unity arrays used by external callers
-        (e.g., groth16 prover) that extract per-stage twiddles themselves.
-
-        Args:
-            n: NTT size (must be a power of 2).
-
-        Returns:
-            Tuple of (forward_roots, inverse_roots, inv_n).
-        """
-        log_n = int(math.log2(n))
-        all_tw, all_inv_tw, all_inv_deg, _, _ = self._get_twiddles()
-        return all_tw[log_n - 1], all_inv_tw[log_n - 1], all_inv_deg[log_n - 1]
-
     def _get_fwd_stage_twiddles(self, log_n: int) -> tuple[Array, ...]:
         """Return cached per-stage forward twiddles for size 2^log_n."""
-        _, _, _, all_fwd_stages, _ = self._get_twiddles()
+        _, all_fwd_stages, _ = self._get_twiddles()
         return all_fwd_stages[log_n - 1]
 
     def _get_inv_stage_twiddles(self, log_n: int) -> tuple[Array, ...]:
         """Return cached per-stage inverse twiddles for size 2^log_n."""
-        _, _, _, _, all_inv_stages = self._get_twiddles()
+        _, _, all_inv_stages = self._get_twiddles()
         return all_inv_stages[log_n - 1]
+
+    def get_stage_twiddles(
+        self, log_n: int
+    ) -> tuple[tuple[Array, ...], tuple[Array, ...], Array]:
+        """Return cached (fwd_stages, inv_stages, inv_n) for size 2^log_n.
+
+        Args:
+            log_n: log₂ of the NTT size.
+
+        Returns:
+            Tuple of (fwd_stage_twiddles, inv_stage_twiddles, inv_n).
+        """
+        all_inv_deg, all_fwd, all_inv = self._get_twiddles()
+        return all_fwd[log_n - 1], all_inv[log_n - 1], all_inv_deg[log_n - 1]
 
     def forward(self, coeffs: Array) -> Array:
         """Compute forward NTT (Cooley-Tukey decimation-in-time).
@@ -303,7 +281,7 @@ class NTT:
             Polynomial coefficients in standard order.
         """
         log_n = int(math.log2(evaluations.shape[0]))
-        _, _, all_inv_deg, _, _ = self._get_twiddles()
+        all_inv_deg, _, _ = self._get_twiddles()
         inv_n = all_inv_deg[log_n - 1]
         inv_stages = self._get_inv_stage_twiddles(log_n)
         return _inverse_ntt(evaluations, inv_n, log_n, *inv_stages)
