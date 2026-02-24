@@ -26,8 +26,6 @@ from rabbitsnark.ntt import (
     BN254_FR_ROOT_OF_UNITY,
     NTT,
     batch_ntt,
-    coset_intt,
-    coset_ntt,
 )
 
 
@@ -99,33 +97,6 @@ def _naive_intt(evals, ntt_instance):
     return jnp.array(result)
 
 
-def _naive_coset_ntt(coeffs, ntt_instance, shift):
-    """Naive coset NTT: NTT(f * [shift⁰, shift¹, ..., shift^(n - 1)])."""
-    n = coeffs.shape[0]
-    dtype = coeffs.dtype
-    one = dtype.type(1)
-
-    shift_powers = [one]
-    for _ in range(1, n):
-        shift_powers.append(shift_powers[-1] * shift)
-
-    return _naive_ntt(coeffs * jnp.array(shift_powers), ntt_instance)
-
-
-def _naive_coset_intt(evals, ntt_instance, shift):
-    """Naive coset INTT: INTT(v) * [shift⁻⁰, shift⁻¹, ..., shift^(-(n - 1))]."""
-    n = evals.shape[0]
-    dtype = evals.dtype
-    one = dtype.type(1)
-    shift_inv = one / shift
-
-    inv_shift_powers = [one]
-    for _ in range(1, n):
-        inv_shift_powers.append(inv_shift_powers[-1] * shift_inv)
-
-    return _naive_intt(evals, ntt_instance) * jnp.array(inv_shift_powers)
-
-
 class TestNTT(absltest.TestCase):
     """Tests for BN254 scalar field NTT implementation."""
 
@@ -188,35 +159,6 @@ class TestNTT(absltest.TestCase):
 
         coeffs = _random_field_elements(4, bn254_sf_mont)
         _assert_eq(self, ntt.forward(coeffs), recovered.forward(coeffs))
-
-
-class TestCosetNTT(absltest.TestCase):
-    """Tests for coset NTT utilities."""
-
-    def setUp(self):
-        """Create NTT instance and coset shift."""
-        self.ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
-        pf = pfinfo(bn254_sf_mont)
-        shift_int = pow(BN254_FR_ROOT_OF_UNITY, 1 << (pf.two_adicity - 4), pf.modulus)
-        self.shift = bn254_sf_mont(shift_int)
-
-    def test_coset_ntt(self):
-        """Test coset NTT matches naive coset NTT."""
-        coeffs = _random_field_elements(8, bn254_sf_mont)
-
-        expected = _naive_coset_ntt(coeffs, self.ntt, self.shift)
-        actual = coset_ntt(self.ntt, coeffs, self.shift)
-
-        _assert_eq(self, actual, expected)
-
-    def test_coset_intt(self):
-        """Test coset INTT matches naive coset INTT."""
-        evals = _random_field_elements(8, bn254_sf_mont, seed=99)
-
-        expected = _naive_coset_intt(evals, self.ntt, self.shift)
-        actual = coset_intt(self.ntt, evals, self.shift)
-
-        _assert_eq(self, actual, expected)
 
 
 class TestBatchNTT(absltest.TestCase):

@@ -29,7 +29,6 @@ Example usage:
     >>> recovered = ntt.inverse(evals)  # Inverse NTT
 """
 
-from .coset import coset_intt, coset_ntt
 from .ntt import NTT, _forward_ntt, _inverse_ntt, batch_ntt
 
 # Primitive 2²⁸-th root of unity in BN254 Fr (standard form)
@@ -41,8 +40,6 @@ BN254_FR_ROOT_OF_UNITY = (
 __all__ = [
     "NTT",
     "BN254_FR_ROOT_OF_UNITY",
-    "coset_ntt",
-    "coset_intt",
     "batch_ntt",
     "_forward_ntt",
     "_inverse_ntt",
