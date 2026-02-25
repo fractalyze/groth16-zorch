@@ -38,7 +38,7 @@ Architecture:
        |-- Coset NTT x 3
        |-- Quotient: h_evals_mont = a_coset * b_coset - c_coset
        |-- h_evals_std = bitcast_convert_type(h_evals_mont, bn254_sf)
-       |-- Scalar decomposition via _decompose_scalars_jit
+       |-- Scalar decomposition via MSM.decompose_scalars
        |  (bitcast bn254_sf -> uint8 -> int32 window indices)
        |-- MSMs 1-5
        |-- EC assembly + ZK blinding
@@ -48,6 +48,7 @@ Architecture:
 from __future__ import annotations
 
 import math
+import os
 import secrets
 from dataclasses import dataclass
 from functools import partial
@@ -65,14 +66,7 @@ from zk_dtypes import (
     bn254_sf_mont,
 )
 
-from rabbitsnark.msm import (
-    _affine_to_xyzz,
-    _decompose_scalars_jit,
-    _ec_zeros,
-    _estimate_optimal_window_bits,
-    _pippenger_msm,
-    _to_xyzz_dtype,
-)
+from rabbitsnark.msm import MSM
 from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
 from rabbitsnark.spmv import build_r1cs_matrices
 from rabbitsnark.spmv.spmv import _spmv_kernel
@@ -106,8 +100,14 @@ class ProveConfig(NamedTuple):
     scalar_bits: int
     wb_main: int  # window_bits for MSMs 1-4
     wb_h: int  # window_bits for MSM 5 (h_evals)
-    wb_1elem: int  # window_bits for 1-element ZK MSMs
     num_public: int  # l -- for z[l+1:m] slicing
+    # Data-level parallelism
+    num_parts_main: int  # partitions for MSMs 1-3 (N=m)
+    chunk_size_main: int
+    num_parts_w: int  # partitions for MSM 4 (N=m-l-1)
+    chunk_size_w: int
+    num_parts_h: int  # partitions for MSM 5 (N=domain_size)
+    chunk_size_h: int
 
 
 @dataclass
@@ -128,7 +128,7 @@ class CompiledProver:
     inv_stage_twiddles: tuple[Array, ...]
     inv_n: Array
     shift_powers: Array
-    # Point arrays (XYZZ)
+    # Point arrays (XYZZ, padded for partition alignment)
     pa1_xyzz: Array
     pb1_xyzz: Array
     pb2_xyzz: Array
@@ -141,16 +141,17 @@ class CompiledProver:
     # EC zeros
     g1_zero: Array
     g2_zero: Array
-    g1_ws_main: Array
-    g1_bk_main: Array
-    g2_ws_main: Array
-    g2_bk_main: Array
-    g1_ws_h: Array
-    g1_bk_h: Array
-    g1_ws_1elem: Array
-    g1_bk_1elem: Array
-    g2_ws_1elem: Array
-    g2_bk_1elem: Array
+    # 2D bucket/window_sums for parallel MSMs 1-3 (N=m)
+    g1_bk_main: Array  # [P_main, num_bk_main]
+    g2_bk_main: Array  # [P_main, num_bk_main]
+    g1_ws_main: Array  # [P_main, num_w_main]
+    g2_ws_main: Array  # [P_main, num_w_main]
+    # 2D bucket/window_sums for parallel MSM 4 (N=m-l-1)
+    g1_bk_w: Array  # [P_w, num_bk_main]
+    g1_ws_w: Array  # [P_w, num_w_main]
+    # 2D bucket/window_sums for parallel MSM 5 (N=domain_size)
+    g1_bk_h: Array  # [P_h, num_bk_h]
+    g1_ws_h: Array  # [P_h, num_w_h]
     # Delta points
     delta_g1_xyzz: Array
     delta_g2_xyzz: Array
@@ -201,7 +202,7 @@ class CompiledProver:
             self.inv_stage_twiddles,
             self.inv_n,
             self.shift_powers,
-            # Point arrays (XYZZ)
+            # Point arrays (XYZZ, padded)
             self.pa1_xyzz,
             self.pb1_xyzz,
             self.pb2_xyzz,
@@ -214,16 +215,15 @@ class CompiledProver:
             # EC zeros
             self.g1_zero,
             self.g2_zero,
-            self.g1_ws_main,
+            # 2D parallel MSM arrays
             self.g1_bk_main,
-            self.g2_ws_main,
             self.g2_bk_main,
-            self.g1_ws_h,
+            self.g1_ws_main,
+            self.g2_ws_main,
+            self.g1_bk_w,
+            self.g1_ws_w,
             self.g1_bk_h,
-            self.g1_ws_1elem,
-            self.g1_bk_1elem,
-            self.g2_ws_1elem,
-            self.g2_bk_1elem,
+            self.g1_ws_h,
             # Delta points
             self.delta_g1_xyzz,
             self.delta_g2_xyzz,
@@ -275,14 +275,14 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     shift_powers = _build_shift_powers(coset_shift, log_n)
 
     # Point arrays: affine -> XYZZ (for MSM)
-    g1_xyzz_dtype = _to_xyzz_dtype(bn254_g1_affine)
-    g2_xyzz_dtype = _to_xyzz_dtype(bn254_g2_affine)
+    g1_xyzz_dtype = MSM.to_xyzz_dtype(bn254_g1_affine)
+    g2_xyzz_dtype = MSM.to_xyzz_dtype(bn254_g2_affine)
 
-    pa1_xyzz = _affine_to_xyzz(_g1_points_to_array(zkey.points_a1), g1_xyzz_dtype)
-    pb1_xyzz = _affine_to_xyzz(_g1_points_to_array(zkey.points_b1), g1_xyzz_dtype)
-    pb2_xyzz = _affine_to_xyzz(_g2_points_to_array(zkey.points_b2), g2_xyzz_dtype)
-    pc1_xyzz = _affine_to_xyzz(_g1_points_to_array(zkey.points_c1), g1_xyzz_dtype)
-    ph1_xyzz = _affine_to_xyzz(_g1_points_to_array(zkey.points_h1), g1_xyzz_dtype)
+    pa1_xyzz = MSM.affine_to_xyzz(_g1_points_to_array(zkey.points_a1), g1_xyzz_dtype)
+    pb1_xyzz = MSM.affine_to_xyzz(_g1_points_to_array(zkey.points_b1), g1_xyzz_dtype)
+    pb2_xyzz = MSM.affine_to_xyzz(_g2_points_to_array(zkey.points_b2), g2_xyzz_dtype)
+    pc1_xyzz = MSM.affine_to_xyzz(_g1_points_to_array(zkey.points_c1), g1_xyzz_dtype)
+    ph1_xyzz = MSM.affine_to_xyzz(_g1_points_to_array(zkey.points_h1), g1_xyzz_dtype)
 
     # VK points -> XYZZ
     alpha1_xyzz = _g1_to_xyzz(vk.alpha_g1)
@@ -290,40 +290,74 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     beta2_xyzz = _g2_to_xyzz(vk.beta_g2)
 
     # Window bits estimation
-    wb_main = _estimate_optimal_window_bits(BN254_SCALAR_BITS, m)
-    wb_h = _estimate_optimal_window_bits(BN254_SCALAR_BITS, domain_size)
-    wb_1elem = min(16, BN254_SCALAR_BITS)
+    wb_main = MSM.estimate_optimal_window_bits(BN254_SCALAR_BITS, m)
+    wb_h = MSM.estimate_optimal_window_bits(BN254_SCALAR_BITS, domain_size)
 
-    # EC zeros for MSM (pre-allocated, not baked as JIT constants)
-    num_bk_main = (1 << wb_main) - 1
-    num_bk_h = (1 << wb_h) - 1
-    num_bk_1elem = (1 << wb_1elem) - 1
+    num_bk_main = 1 << wb_main
+    num_bk_h = 1 << wb_h
     num_w_main = (BN254_SCALAR_BITS + wb_main - 1) // wb_main
     num_w_h = (BN254_SCALAR_BITS + wb_h - 1) // wb_h
-    num_w_1elem = (BN254_SCALAR_BITS + wb_1elem - 1) // wb_1elem
 
-    g1_zero = _ec_zeros((), g1_xyzz_dtype)
-    g2_zero = _ec_zeros((), g2_xyzz_dtype)
-    g1_ws_main = _ec_zeros(num_w_main, g1_xyzz_dtype)
-    g1_bk_main = _ec_zeros(num_bk_main, g1_xyzz_dtype)
-    g2_ws_main = _ec_zeros(num_w_main, g2_xyzz_dtype)
-    g2_bk_main = _ec_zeros(num_bk_main, g2_xyzz_dtype)
-    g1_ws_h = _ec_zeros(num_w_h, g1_xyzz_dtype)
-    g1_bk_h = _ec_zeros(num_bk_h, g1_xyzz_dtype)
-    g1_ws_1elem = _ec_zeros(num_w_1elem, g1_xyzz_dtype)
-    g1_bk_1elem = _ec_zeros(num_bk_1elem, g1_xyzz_dtype)
-    g2_ws_1elem = _ec_zeros(num_w_1elem, g2_xyzz_dtype)
-    g2_bk_1elem = _ec_zeros(num_bk_1elem, g2_xyzz_dtype)
+    # --- Data-level parallelism: partition config ---
+    max_parts = os.cpu_count() or 1
+    n_w = m - num_public - 1  # witness-only count for MSM 4
+
+    # Minimum elements per partition to amortize scatter/reduce overhead.
+    # Each partition generates W windows of scatter+fori_loop in HLO;
+    # too many partitions on small inputs causes IR bloat and slow LLVM compile.
+    min_chunk = 64
+
+    p_main = max(1, min(m // min_chunk, max_parts))
+    chunk_main = math.ceil(m / p_main)
+    padded_main = chunk_main * p_main
+
+    p_w = max(1, min(n_w // min_chunk, max_parts))
+    chunk_w = math.ceil(n_w / p_w)
+    padded_w = chunk_w * p_w
+
+    p_h = max(1, min(domain_size // min_chunk, max_parts))
+    chunk_h = math.ceil(domain_size / p_h)
+    padded_h = chunk_h * p_h
+
+    # Pad point arrays to partition-aligned sizes (zero-index scatters → dummy bucket)
+    if padded_main > m:
+        pad_g1 = MSM.ec_zeros(padded_main - m, g1_xyzz_dtype)
+        pa1_xyzz = jnp.concatenate([pa1_xyzz, pad_g1])
+        pb1_xyzz = jnp.concatenate([pb1_xyzz, pad_g1])
+        pad_g2 = MSM.ec_zeros(padded_main - m, g2_xyzz_dtype)
+        pb2_xyzz = jnp.concatenate([pb2_xyzz, pad_g2])
+    if padded_w > n_w:
+        pc1_xyzz = jnp.concatenate(
+            [pc1_xyzz, MSM.ec_zeros(padded_w - n_w, g1_xyzz_dtype)]
+        )
+    if padded_h > domain_size:
+        ph1_xyzz = jnp.concatenate(
+            [ph1_xyzz, MSM.ec_zeros(padded_h - domain_size, g1_xyzz_dtype)]
+        )
+
+    # EC zeros
+    g1_zero = MSM.ec_zeros((), g1_xyzz_dtype)
+    g2_zero = MSM.ec_zeros((), g2_xyzz_dtype)
+
+    # 2D bucket/window_sums for parallel MSMs
+    g1_bk_main = MSM.ec_zeros((p_main, num_bk_main), g1_xyzz_dtype)
+    g2_bk_main = MSM.ec_zeros((p_main, num_bk_main), g2_xyzz_dtype)
+    g1_ws_main = MSM.ec_zeros((p_main, num_w_main), g1_xyzz_dtype)
+    g2_ws_main = MSM.ec_zeros((p_main, num_w_main), g2_xyzz_dtype)
+    g1_bk_w = MSM.ec_zeros((p_w, num_bk_main), g1_xyzz_dtype)
+    g1_ws_w = MSM.ec_zeros((p_w, num_w_main), g1_xyzz_dtype)
+    g1_bk_h = MSM.ec_zeros((p_h, num_bk_h), g1_xyzz_dtype)
+    g1_ws_h = MSM.ec_zeros((p_h, num_w_h), g1_xyzz_dtype)
 
     # Delta points for ZK blinding (1-element XYZZ arrays)
-    delta_g1_xyzz = _affine_to_xyzz(
+    delta_g1_xyzz = MSM.affine_to_xyzz(
         jnp.array(
             [bn254_g1_affine((vk.delta_g1.x, vk.delta_g1.y))],
             dtype=bn254_g1_affine,
         ),
         g1_xyzz_dtype,
     )
-    delta_g2_xyzz = _affine_to_xyzz(
+    delta_g2_xyzz = MSM.affine_to_xyzz(
         jnp.array(
             [bn254_g2_affine((vk.delta_g2.x, vk.delta_g2.y))],
             dtype=bn254_g2_affine,
@@ -340,8 +374,13 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
         scalar_bits=BN254_SCALAR_BITS,
         wb_main=wb_main,
         wb_h=wb_h,
-        wb_1elem=wb_1elem,
         num_public=num_public,
+        num_parts_main=p_main,
+        chunk_size_main=chunk_main,
+        num_parts_w=p_w,
+        chunk_size_w=chunk_w,
+        num_parts_h=p_h,
+        chunk_size_h=chunk_h,
     )
 
     return CompiledProver(
@@ -364,16 +403,14 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
         beta2_xyzz=beta2_xyzz,
         g1_zero=g1_zero,
         g2_zero=g2_zero,
-        g1_ws_main=g1_ws_main,
         g1_bk_main=g1_bk_main,
-        g2_ws_main=g2_ws_main,
         g2_bk_main=g2_bk_main,
-        g1_ws_h=g1_ws_h,
+        g1_ws_main=g1_ws_main,
+        g2_ws_main=g2_ws_main,
+        g1_bk_w=g1_bk_w,
+        g1_ws_w=g1_ws_w,
         g1_bk_h=g1_bk_h,
-        g1_ws_1elem=g1_ws_1elem,
-        g1_bk_1elem=g1_bk_1elem,
-        g2_ws_1elem=g2_ws_1elem,
-        g2_bk_1elem=g2_bk_1elem,
+        g1_ws_h=g1_ws_h,
         delta_g1_xyzz=delta_g1_xyzz,
         delta_g2_xyzz=delta_g2_xyzz,
     )
@@ -401,7 +438,7 @@ def _prove_core(
     inv_stage_tw: tuple[Array, ...],
     inv_n: Array,
     shift_powers: Array,
-    # Point arrays (XYZZ)
+    # Point arrays (XYZZ, padded for partition alignment)
     pa1: Array,
     pb1: Array,
     pb2: Array,
@@ -414,32 +451,31 @@ def _prove_core(
     # EC zeros
     g1_zero: Array,
     g2_zero: Array,
-    g1_ws_main: Array,
+    # 2D parallel MSM arrays
     g1_bk_main: Array,
-    g2_ws_main: Array,
     g2_bk_main: Array,
-    g1_ws_h: Array,
+    g1_ws_main: Array,
+    g2_ws_main: Array,
+    g1_bk_w: Array,
+    g1_ws_w: Array,
     g1_bk_h: Array,
-    g1_ws_1elem: Array,
-    g1_bk_1elem: Array,
-    g2_ws_1elem: Array,
-    g2_bk_1elem: Array,
+    g1_ws_h: Array,
     # Delta points
     delta_g1: Array,
     delta_g2: Array,
 ) -> tuple[Array, Array, Array]:
     """Single JIT kernel: Arithmetic -> Decomposition -> MSMs -> Affine.
 
-    ZK blinding is always computed.  When r=s=0 the blinding MSMs produce
-    identity (zero windows -> Pippenger returns identity) so the result is
-    equivalent to a non-ZK proof with no compile-time branching.
+    MSMs 1-5 use data-level parallelism via ``MSM.pippenger``:
+    each MSM is split into P independent partitions that ThunkExecutor
+    can schedule in parallel.  ZK blinding uses direct scalar
+    multiplication via ``*`` operator.
     """
     log_n = config.log_n
     n = 1 << log_n
     sb = config.scalar_bits
     wb_main = config.wb_main
     wb_h = config.wb_h
-    wb_1elem = config.wb_1elem
     l = config.num_public  # noqa: E741
 
     # ---------------------------------------------------------------
@@ -472,24 +508,87 @@ def _prove_core(
     # ---------------------------------------------------------------
     h_evals_std = lax.bitcast_convert_type(h_evals_mont, bn254_sf)
 
-    wi_z_main = _decompose_scalars_jit(z_std, sb, wb_main)
-    wi_zw = _decompose_scalars_jit(z_std[l + 1 :], sb, wb_main)
-    wi_h = _decompose_scalars_jit(h_evals_std, sb, wb_h)
+    wi_z_main = MSM.decompose_scalars(z_std, sb, wb_main)
+    wi_zw = MSM.decompose_scalars(z_std[l + 1 :], sb, wb_main)
+    wi_h = MSM.decompose_scalars(h_evals_std, sb, wb_h)
 
-    wi_r = _decompose_scalars_jit(r_arr, sb, wb_1elem)
-    wi_s = _decompose_scalars_jit(s_arr, sb, wb_1elem)
-    wi_neg_rs = _decompose_scalars_jit(neg_rs_arr, sb, wb_1elem)
+    # Pad window indices to partition-aligned sizes (zeros → bucket 0 dummy)
+    pad_main = config.chunk_size_main * config.num_parts_main - wi_z_main.shape[1]
+    if pad_main > 0:
+        wi_z_main = jnp.pad(wi_z_main, ((0, 0), (0, pad_main)))
+    pad_w = config.chunk_size_w * config.num_parts_w - wi_zw.shape[1]
+    if pad_w > 0:
+        wi_zw = jnp.pad(wi_zw, ((0, 0), (0, pad_w)))
+    pad_h = config.chunk_size_h * config.num_parts_h - wi_h.shape[1]
+    if pad_h > 0:
+        wi_h = jnp.pad(wi_h, ((0, 0), (0, pad_h)))
 
     # ---------------------------------------------------------------
     # Stage 3: MSMs + EC assembly + ZK blinding + affine conversion
     # ---------------------------------------------------------------
+    P_main = config.num_parts_main
+    C_main = config.chunk_size_main
+    P_w = config.num_parts_w
+    C_w = config.chunk_size_w
+    P_h = config.num_parts_h
+    C_h = config.chunk_size_h
 
-    # MSMs 1-5
-    msm_1 = _pippenger_msm(wi_z_main, pa1, g1_zero, g1_ws_main, g1_bk_main, sb, wb_main)
-    msm_2 = _pippenger_msm(wi_z_main, pb1, g1_zero, g1_ws_main, g1_bk_main, sb, wb_main)
-    msm_3 = _pippenger_msm(wi_z_main, pb2, g2_zero, g2_ws_main, g2_bk_main, sb, wb_main)
-    msm_4 = _pippenger_msm(wi_zw, pc1, g1_zero, g1_ws_main, g1_bk_main, sb, wb_main)
-    msm_5 = _pippenger_msm(wi_h, ph1, g1_zero, g1_ws_h, g1_bk_h, sb, wb_h)
+    # Parallel MSMs 1-5
+    msm_1 = MSM.pippenger(
+        wi_z_main,
+        pa1,
+        g1_zero,
+        g1_bk_main,
+        g1_ws_main,
+        sb,
+        wb_main,
+        P_main,
+        C_main,
+    )
+    msm_2 = MSM.pippenger(
+        wi_z_main,
+        pb1,
+        g1_zero,
+        g1_bk_main,
+        g1_ws_main,
+        sb,
+        wb_main,
+        P_main,
+        C_main,
+    )
+    msm_3 = MSM.pippenger(
+        wi_z_main,
+        pb2,
+        g2_zero,
+        g2_bk_main,
+        g2_ws_main,
+        sb,
+        wb_main,
+        P_main,
+        C_main,
+    )
+    msm_4 = MSM.pippenger(
+        wi_zw,
+        pc1,
+        g1_zero,
+        g1_bk_w,
+        g1_ws_w,
+        sb,
+        wb_main,
+        P_w,
+        C_w,
+    )
+    msm_5 = MSM.pippenger(
+        wi_h,
+        ph1,
+        g1_zero,
+        g1_bk_h,
+        g1_ws_h,
+        sb,
+        wb_h,
+        P_h,
+        C_h,
+    )
 
     # EC assembly
     pi_a = alpha1 + msm_1
@@ -497,61 +596,18 @@ def _prove_core(
     pi_b2 = beta2 + msm_3
     pi_c = msm_4 + msm_5
 
-    # ZK blinding (identity when r=s=0)
-    # r*delta_1, s*delta_2
-    r_delta1 = _pippenger_msm(
-        wi_r,
-        delta_g1,
-        g1_zero,
-        g1_ws_1elem,
-        g1_bk_1elem,
-        sb,
-        wb_1elem,
-    )
-    s_delta2 = _pippenger_msm(
-        wi_s,
-        delta_g2,
-        g2_zero,
-        g2_ws_1elem,
-        g2_bk_1elem,
-        sb,
-        wb_1elem,
-    )
+    # ZK blinding (identity when r=s=0) — scalar multiplication via *
+    r = r_arr[0]
+    s = s_arr[0]
+    neg_rs = neg_rs_arr[0]
 
-    # s*pi_A and r*pi_B1 on UNBLINDED values (no affine round-trip)
-    s_pi_a = _pippenger_msm(
-        wi_s,
-        jnp.expand_dims(pi_a, 0),
-        g1_zero,
-        g1_ws_1elem,
-        g1_bk_1elem,
-        sb,
-        wb_1elem,
-    )
-    r_pi_b1 = _pippenger_msm(
-        wi_r,
-        jnp.expand_dims(pi_b1, 0),
-        g1_zero,
-        g1_ws_1elem,
-        g1_bk_1elem,
-        sb,
-        wb_1elem,
-    )
+    # s*pi_A and r*pi_B1 on UNBLINDED values (before blinding below)
+    s_pi_a = s * pi_a
+    r_pi_b1 = r * pi_b1
 
-    # -(rs)*delta_1
-    neg_rs_delta1 = _pippenger_msm(
-        wi_neg_rs,
-        delta_g1,
-        g1_zero,
-        g1_ws_1elem,
-        g1_bk_1elem,
-        sb,
-        wb_1elem,
-    )
-
-    pi_a = pi_a + r_delta1
-    pi_b2 = pi_b2 + s_delta2
-    pi_c = pi_c + s_pi_a + r_pi_b1 + neg_rs_delta1
+    pi_a = pi_a + r * delta_g1[0]
+    pi_b2 = pi_b2 + s * delta_g2[0]
+    pi_c = pi_c + s_pi_a + r_pi_b1 + neg_rs * delta_g1[0]
 
     # XYZZ -> Affine
     pi_a = lax.convert_element_type(pi_a, bn254_g1_affine)

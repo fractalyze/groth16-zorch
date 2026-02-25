@@ -16,7 +16,18 @@
 
 __version__ = "0.1.0"
 
-from rabbitsnark import groth16, msm, ntt, spmv
+# groth16.verifier imports jax._src.lax.zk_ops (pairing_check) which is
+# not yet available; defer import to avoid ImportError at package level.
+import importlib as _importlib
+
+from rabbitsnark import msm, ntt, spmv
+
+
+def __getattr__(name: str):
+    if name == "groth16":
+        return _importlib.import_module("rabbitsnark.groth16")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "__version__",

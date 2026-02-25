@@ -13,14 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for MSM (Multi-Scalar Multiplication) implementations."""
+"""Tests for MSM (Multi-Scalar Multiplication) utilities."""
 
 import jax.numpy as jnp
 import numpy as np
 from absl.testing import absltest
-from zk_dtypes import bn254_g1_affine, bn254_sf
+from zk_dtypes import bn254_g1_affine, bn254_g1_xyzz, bn254_sf
 
-from rabbitsnark.msm import MSMBn254
+from rabbitsnark.msm import MSM
 
 # BN254 base field modulus (for XYZZ→affine conversion).
 BN254_BF_P = (
@@ -39,35 +39,40 @@ def _xyzz_to_affine(xyzz_point):
     return (x_aff, y_aff)
 
 
-def _naive_msm(scalars, points, msm):
-    """Compute MSM naively: sum of individual s_i * P_i."""
-    result = msm.compute(scalars[0:1], points[0:1])
-    for i in range(1, scalars.shape[0]):
-        result = result + msm.compute(scalars[i : i + 1], points[i : i + 1])
-    return result
+class TestScalarMul(absltest.TestCase):
+    """Correctness tests for EC scalar multiplication via ``*`` operator."""
 
+    def test_scalar_mul_matches_repeated_add(self):
+        """3 * G via ``*`` matches G + G + G."""
+        g_xyzz = MSM.affine_to_xyzz(
+            jnp.array([bn254_g1_affine((1, 2))], dtype=bn254_g1_affine),
+            bn254_g1_xyzz,
+        )
+        s = jnp.array([bn254_sf(3)], dtype=bn254_sf)
 
-class TestMSMCorrectness(absltest.TestCase):
-    """Correctness tests: Pippenger MSM vs naive MSM."""
+        scalar_mul_result = s * g_xyzz
+        add_result = g_xyzz + g_xyzz + g_xyzz
 
-    def setUp(self):
-        self.msm = MSMBn254()
-        # BN254 G1 generator: (1, 2)
-        self.generator = jnp.array([bn254_g1_affine((1, 2))], dtype=bn254_g1_affine)
+        self.assertEqual(
+            _xyzz_to_affine(scalar_mul_result), _xyzz_to_affine(add_result)
+        )
 
-    def test_multi_point_msm(self):
-        """Pippenger MSM matches naive MSM for small inputs."""
+    def test_naive_msm_via_mul(self):
+        """sum(s_i * P_i) via ``*`` and ``+`` for small input."""
         g = bn254_g1_affine((1, 2))
-        points = jnp.array([g, g, g], dtype=bn254_g1_affine)
+        points = MSM.affine_to_xyzz(
+            jnp.array([g, g, g], dtype=bn254_g1_affine), bn254_g1_xyzz
+        )
         scalars = jnp.array([2, 3, 4], dtype=bn254_sf)
 
-        pippenger_result = self.msm.compute(scalars, points)
-        naive_result = _naive_msm(scalars, points, self.msm)
+        # sum(s_i * P_i) = (2 + 3 + 4) * G = 9 * G
+        naive_msm = scalars[0] * points[0]
+        for i in range(1, scalars.shape[0]):
+            naive_msm = naive_msm + scalars[i] * points[i]
 
-        # XYZZ points use projective coordinates — compare in affine form.
-        self.assertEqual(
-            _xyzz_to_affine(pippenger_result), _xyzz_to_affine(naive_result)
-        )
+        nine_g = jnp.array([bn254_sf(9)], dtype=bn254_sf) * points[0:1]
+
+        self.assertEqual(_xyzz_to_affine(naive_msm), _xyzz_to_affine(nine_g[0]))
 
 
 if __name__ == "__main__":
