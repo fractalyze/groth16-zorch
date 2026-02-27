@@ -13,31 +13,29 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Command-line interface for RabbitSNARK Groth16 prover.
+"""Command-line interface for RabbitSNARK Groth16 prover and verifier.
 
-Usage mirrors rapidsnark::
+Usage::
 
+    # Prove (backward-compatible positional args)
     rabbitsnark <circuit.zkey> <witness.wtns> <proof.json> <public.json>
+
+    # Prove (explicit subcommand)
+    rabbitsnark prove <circuit.zkey> <witness.wtns> <proof.json> <public.json>
+
+    # Verify (mirrors snarkjs groth16 verify)
+    rabbitsnark verify <vkey.json> <public.json> <proof.json>
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 
 
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(
-        prog="rabbitsnark",
-        description="Groth16 prover (circom/snarkjs compatible)",
-    )
-    parser.add_argument("zkey", help="proving key (.zkey)")
-    parser.add_argument("wtns", help="witness (.wtns)")
-    parser.add_argument("proof", help="output proof path (.json)")
-    parser.add_argument("public", help="output public signals path (.json)")
-    args = parser.parse_args(argv)
-
+def _cmd_prove(args: argparse.Namespace) -> None:
     from rabbitsnark.circom.wtns import parse_wtns
     from rabbitsnark.circom.zkey import parse_zkey
     from rabbitsnark.groth16 import compile
@@ -66,6 +64,74 @@ def main(argv: list[str] | None = None) -> None:
     with open(args.public, "w") as f:
         json.dump(public_signals, f)
     print(f"Public signals written to: {args.public}")
+
+
+def _cmd_verify(args: argparse.Namespace) -> None:
+    from rabbitsnark.groth16 import VerificationKey, verify
+
+    print(f"Loading verification key: {args.vkey}")
+    vk = VerificationKey.from_file(args.vkey)
+
+    with open(args.public) as f:
+        public_signals = json.load(f)
+    print(f"Loading public signals: {args.public}")
+
+    with open(args.proof) as f:
+        proof = json.load(f)
+    print(f"Loading proof: {args.proof}")
+
+    print("Verifying proof...")
+    t0 = time.time()
+    valid = verify(vk, proof, public_signals)
+    elapsed = time.time() - t0
+    print(f"Verification completed in {elapsed:.2f}s")
+
+    if valid:
+        print("VALID")
+    else:
+        print("INVALID")
+        sys.exit(1)
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        prog="rabbitsnark",
+        description="Groth16 prover and verifier (circom/snarkjs compatible)",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    # prove subcommand
+    prove_parser = subparsers.add_parser("prove", help="Generate a Groth16 proof")
+    prove_parser.add_argument("zkey", help="proving key (.zkey)")
+    prove_parser.add_argument("wtns", help="witness (.wtns)")
+    prove_parser.add_argument("proof", help="output proof path (.json)")
+    prove_parser.add_argument("public", help="output public signals path (.json)")
+
+    # verify subcommand
+    verify_parser = subparsers.add_parser("verify", help="Verify a Groth16 proof")
+    verify_parser.add_argument("vkey", help="verification key (.json)")
+    verify_parser.add_argument("public", help="public signals (.json)")
+    verify_parser.add_argument("proof", help="proof (.json)")
+
+    args = parser.parse_args(argv)
+
+    # Backward compat: 4 positional args without subcommand -> prove
+    if args.command is None:
+        if argv is not None:
+            raw_args = argv
+        else:
+            raw_args = sys.argv[1:]
+        if len(raw_args) == 4:
+            args = prove_parser.parse_args(raw_args)
+            args.command = "prove"
+        else:
+            parser.print_help()
+            sys.exit(1)
+
+    if args.command == "prove":
+        _cmd_prove(args)
+    elif args.command == "verify":
+        _cmd_verify(args)
 
 
 if __name__ == "__main__":
