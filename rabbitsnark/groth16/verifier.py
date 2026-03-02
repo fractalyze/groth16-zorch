@@ -110,6 +110,13 @@ def verify(
     Returns:
         True if the proof is valid.
     """
+    # Validate public signals count
+    expected = len(vk.ic) - 1
+    if len(public_signals) != expected:
+        raise ValueError(
+            f"Expected {expected} public signals, got {len(public_signals)}"
+        )
+
     # Parse proof
     if isinstance(proof, dict):
         pi_a = _parse_g1(proof["pi_a"])

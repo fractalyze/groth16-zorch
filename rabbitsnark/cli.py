@@ -72,13 +72,13 @@ def _cmd_verify(args: argparse.Namespace) -> None:
     print(f"Loading verification key: {args.vkey}")
     vk = VerificationKey.from_file(args.vkey)
 
+    print(f"Loading public signals: {args.public}")
     with open(args.public) as f:
         public_signals = json.load(f)
-    print(f"Loading public signals: {args.public}")
 
+    print(f"Loading proof: {args.proof}")
     with open(args.proof) as f:
         proof = json.load(f)
-    print(f"Loading proof: {args.proof}")
 
     print("Verifying proof...")
     t0 = time.time()
