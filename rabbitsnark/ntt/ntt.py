@@ -64,9 +64,7 @@ class NTT:
     def __init__(self, dtype: type, root_of_unity: int):
         self.DTYPE = dtype
         self.ROOT_OF_UNITY = root_of_unity
-        pf = pfinfo(dtype)
-        self.MODULUS = pf.modulus
-        self.MAX_LOG_N = pf.two_adicity
+        self.MAX_LOG_N = pfinfo(dtype).two_adicity
 
     # ------------------------------------------------------------------
     # JIT-compiled NTT kernels
@@ -178,18 +176,17 @@ class NTT:
         """
         # Limit precomputation to 2²⁰ for memory efficiency
         practical_max_log_n = min(self.MAX_LOG_N, 20)
-        p = self.MODULUS
         dtype = self.DTYPE
 
-        # Compute omega_ints[k] = primitive 2^k-th root (Python int).
+        # Compute omegas[k] = primitive 2^k-th root (dtype scalar).
         # Start from 2^MAX_LOG_N-th root, then derive smaller roots by squaring.
-        max_omega = pow(
-            self.ROOT_OF_UNITY, 1 << (self.MAX_LOG_N - practical_max_log_n), p
+        max_omega = dtype(self.ROOT_OF_UNITY) ** (
+            1 << (self.MAX_LOG_N - practical_max_log_n)
         )
-        omega_ints: list[int] = [0] * (practical_max_log_n + 1)
-        omega_ints[practical_max_log_n] = max_omega
+        omegas: list = [None] * (practical_max_log_n + 1)
+        omegas[practical_max_log_n] = max_omega
         for k in range(practical_max_log_n - 1, 0, -1):
-            omega_ints[k] = pow(omega_ints[k + 1], 2, p)
+            omegas[k] = omegas[k + 1] ** 2
 
         with jax.ensure_compile_time_eval():
             one = dtype(1)
@@ -203,7 +200,7 @@ class NTT:
                 # Forward DIT: stage s uses 2^(s + 1)-th root of unity
                 fwd_stages = []
                 for s in range(log_n):
-                    omega_s = dtype(omega_ints[s + 1])
+                    omega_s = omegas[s + 1]
                     fwd_stages.append(self._build_twiddle_array(one, omega_s, s))
                 all_fwd_stages.append(tuple(fwd_stages))
 
@@ -211,7 +208,7 @@ class NTT:
                 inv_stages = []
                 for stage_idx in range(log_n):
                     actual_stage = log_n - 1 - stage_idx
-                    omega_s_inv = one / dtype(omega_ints[actual_stage + 1])
+                    omega_s_inv = one / omegas[actual_stage + 1]
                     inv_stages.append(
                         self._build_twiddle_array(one, omega_s_inv, actual_stage)
                     )

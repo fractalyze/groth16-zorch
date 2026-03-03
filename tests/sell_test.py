@@ -32,10 +32,6 @@ from rabbitsnark.spmv import (
     witness_to_montgomery,
 )
 
-BN254_FR_MODULUS = (
-    21888242871839275222246405745257275088548364400416034343698204186575808495617
-)
-
 
 def _assert_eq(test_case, actual, expected):
     """Assert two ZK field arrays are element-wise equal."""
@@ -274,18 +270,16 @@ class TestSELLSpMV(absltest.TestCase):
 
     def test_spmv_sell_field_arithmetic(self):
         """Test SELL SpMV with field arithmetic (negative values mod p)."""
-        p = BN254_FR_MODULUS
-
         row_ptrs = np.array([0, 1, 2], dtype=np.int32)
         col_indices = np.array([0, 1], dtype=np.int32)
-        values = jnp.array([p - 1, 2], dtype=bn254_sf_mont)
+        values = jnp.array([-1, 2], dtype=bn254_sf_mont)
         csr = CSRMatrix.from_arrays(row_ptrs, col_indices, values, 2, 2)
 
         sell = SELLMatrix.from_csr(csr)
         x = jnp.array([5, 7], dtype=bn254_sf_mont)
         y = spmv_sell(sell, x)
 
-        expected = jnp.array([p - 5, 14], dtype=bn254_sf_mont)
+        expected = jnp.array([-5, 14], dtype=bn254_sf_mont)
         _assert_eq(self, y, expected)
 
     def test_spmv_sell_single_dense_row(self):
@@ -318,7 +312,6 @@ class TestSELLR1CSIntegration(absltest.TestCase):
 
     def setUp(self):
         self.test_data_dir = Path(__file__).parent / "data"
-        self.p = BN254_FR_MODULUS
 
     def test_sell_r1cs_satisfaction(self):
         """Test R1CS satisfaction using SELL SpMV: Az . Bz = expected."""
@@ -326,7 +319,7 @@ class TestSELLR1CSIntegration(absltest.TestCase):
         wtns = parse_wtns(self.test_data_dir / "multiplier_3.wtns")
 
         A, B = build_r1cs_matrices(zkey, bn254_sf_mont)
-        z_mont = witness_to_montgomery(wtns.witnesses, bn254_sf_mont, self.p)
+        z_mont = witness_to_montgomery(wtns.witnesses, bn254_sf_mont)
 
         sell_A = SELLMatrix.from_csr(A)
         sell_B = SELLMatrix.from_csr(B)
@@ -336,7 +329,7 @@ class TestSELLR1CSIntegration(absltest.TestCase):
         AzBz = Az * Bz
 
         expected = jnp.array(
-            [self.p - 12, self.p - 60, 0, 0],
+            [-12, -60, 0, 0],
             dtype=bn254_sf_mont,
         )
         _assert_eq(self, AzBz, expected)

@@ -179,10 +179,8 @@ class CompiledProver:
 
         r_arr = jnp.array([r_int], dtype=bn254_sf)
         s_arr = jnp.array([s_int], dtype=bn254_sf)
-        neg_rs_int = (
-            BN254_FR_MODULUS - (r_int * s_int) % BN254_FR_MODULUS
-        ) % BN254_FR_MODULUS
-        neg_rs_arr = jnp.array([neg_rs_int], dtype=bn254_sf)
+        neg_rs = -(bn254_sf(r_int) * bn254_sf(s_int))
+        neg_rs_arr = jnp.array([neg_rs], dtype=bn254_sf)
 
         pi_a, pi_b2, pi_c = _prove_core(
             self.config,
@@ -254,7 +252,6 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     vk = zkey.verifying_key
 
     m = num_vars
-    p = BN254_FR_MODULUS
 
     # R1CS matrices -> SELL format
     csr_a, csr_b = build_r1cs_matrices(zkey, bn254_sf_mont)
@@ -267,12 +264,11 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
 
     # Coset shift powers: [1, g, g², ..., g^(n-1)] where g = omega_{2n}
     # Pre-computed outside JIT (256-bit constants can't be created during JIT)
-    omega_2n_int = pow(
-        BN254_FR_ROOT_OF_UNITY,
-        1 << (BN254_TWO_ADIC_BITS - log_n - 1),
-        p,
+    coset_shift = jnp.array(
+        bn254_sf_mont(BN254_FR_ROOT_OF_UNITY)
+        ** (1 << (BN254_TWO_ADIC_BITS - log_n - 1)),
+        dtype=bn254_sf_mont,
     )
-    coset_shift = jnp.array(omega_2n_int, dtype=bn254_sf_mont)
     shift_powers = _build_shift_powers(coset_shift, log_n)
 
     # Point arrays: affine -> XYZZ (for MSM)

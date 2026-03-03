@@ -69,13 +69,12 @@ class CSRMatrix:
         n_rows: int,
         n_cols: int,
         dtype: type,
-        modulus: int,
     ) -> CSRMatrix:
         """Build CSR from zkey Coefficient list.
 
-        Coefficients are parsed in standard form. This method converts them
-        to Montgomery form for computation (Montgomery form is a ring
-        isomorphism: Mont(a * b) = Mont(a) * Mont(b)).
+        Coefficients are parsed in standard form. The zk_dtypes dtype
+        auto-converts to Montgomery form on array creation (Montgomery
+        form is a ring isomorphism: Mont(a * b) = Mont(a) * Mont(b)).
 
         Args:
             coefficients: List of Coefficient objects from zkey parser.
@@ -83,7 +82,6 @@ class CSRMatrix:
             n_rows: Number of constraints (rows).
             n_cols: Number of signals (columns).
             dtype: ZK field dtype (e.g., bn254_sf_mont).
-            modulus: Scalar field modulus for Montgomery conversion.
         """
         # Filter by matrix type
         if is_matrix_a:
