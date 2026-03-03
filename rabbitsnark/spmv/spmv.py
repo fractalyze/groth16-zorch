@@ -18,14 +18,16 @@
 Implements y = A @ x where A is a sparse matrix and x is a dense vector,
 both in Montgomery form.
 
-Uses ELL (ELLPACK) format: the sparse matrix is stored as padded 2D arrays
-(n_rows, max_nnz_per_row) so that SpMV reduces to:
-    1. Gather:  gathered[k] = x[ell_col_indices[k]]
-    2. Multiply: products[k] = ell_values[k] * gathered[k]
-    3. Reshape + sum: y[i] = sum(products[i, :])
+Uses SELL (Sliced ELL) format: rows are sorted by NNZ count and partitioned
+into groups with similar density. Each partition is padded to its own
+max_nnz, reducing memory waste from 80-95% (plain ELL) to near-optimal.
 
-This avoids scatter operations (y.at[i].set()) which the ZKX backend does
-not support under JIT for ZK field types.
+Per-partition SpMV:
+    1. Gather:  gathered[k] = x[col_indices_p[k]]
+    2. Multiply: products[k] = values_p[k] * gathered[k]
+    3. Reshape + sum: y_p[i] = sum(products[i, :])
+
+Results are concatenated and reordered via inverse_perm gather.
 """
 
 from __future__ import annotations
@@ -39,56 +41,71 @@ from jax import jit
 if TYPE_CHECKING:
     from jax import Array
 
-    from .csr_matrix import CSRMatrix
+    from .sell import SELLConfig, SELLMatrix
 
 
-@partial(jit, static_argnums=(3, 4))
-def _spmv_kernel(
-    ell_col_indices: Array,
-    ell_values: Array,
+@partial(jit, static_argnums=(0,))
+def _spmv_sell_kernel(
+    config: SELLConfig,
     x: Array,
-    n_rows: int,
-    max_nnz_per_row: int,
+    inverse_perm: Array,
+    *partition_arrays: Array,
 ) -> Array:
-    """JIT-compiled SpMV kernel using vectorized ELL-format operations.
+    """JIT-compiled SELL SpMV kernel with unrolled partition loop.
+
+    Each partition is processed independently: gather -> multiply -> reshape ->
+    sum. Results are concatenated and reordered via inverse_perm gather.
+
+    The partition loop is unrolled at trace time (Python-level for loop),
+    producing P separate HLO fusions -- one per partition.
 
     Args:
-        ell_col_indices: ELL column indices, flat (n_rows * max_nnz_per_row,).
-        ell_values: ELL values (Montgomery form), flat (n_rows * max_nnz_per_row,).
-            Padding slots have value 0 (field zero).
+        config: Static SELL configuration (used via static_argnums).
         x: Dense input vector (Montgomery form), shape (n_cols,).
-        n_rows: Number of rows in the sparse matrix (static).
-        max_nnz_per_row: Maximum nonzeros per row (static).
+        inverse_perm: Gather indices to restore original row order, (n_rows,).
+        *partition_arrays: Alternating (col_indices_p, values_p) for P
+            partitions, each flat with size partition_sizes[p] *
+            partition_max_nnz[p].
 
     Returns:
         Result vector y = A @ x, shape (n_rows,).
     """
-    # Step 1: Gather x values at column indices
-    gathered = x[ell_col_indices]
+    results = []
+    for p in range(config.num_partitions):
+        col_p = partition_arrays[2 * p]
+        val_p = partition_arrays[2 * p + 1]
+        gathered = x[col_p]
+        products = val_p * gathered
+        y_p = jnp.sum(
+            products.reshape(config.partition_sizes[p], config.partition_max_nnz[p]),
+            axis=1,
+        )
+        results.append(y_p)
+    y_sorted = jnp.concatenate(results)
+    return y_sorted[inverse_perm]
 
-    # Step 2: Element-wise multiply (padding slots contribute 0 * x[0] = 0)
-    products = ell_values * gathered
 
-    # Step 3: Reshape to (n_rows, max_nnz_per_row) and sum along columns
-    return jnp.sum(products.reshape(n_rows, max_nnz_per_row), axis=1)
-
-
-def spmv(matrix: CSRMatrix, x: Array) -> Array:
-    """Compute y = A @ x using ELL-format JIT kernel.
+def spmv_sell(matrix: SELLMatrix, x: Array) -> Array:
+    """Compute y = A @ x using SELL-format JIT kernel.
 
     Both the matrix values and x must be in Montgomery form.
 
     Args:
-        matrix: CSR sparse matrix (with ELL-format view).
+        matrix: SELL sparse matrix.
         x: Dense input vector, shape (n_cols,).
 
     Returns:
         Dense result vector, shape (n_rows,).
     """
-    return _spmv_kernel(
-        matrix.ell_col_indices,
-        matrix.ell_values,
+    # Flatten partition arrays into alternating (col, val, col, val, ...)
+    partition_arrays = []
+    for p in range(matrix.config.num_partitions):
+        partition_arrays.append(matrix.partition_col_indices[p])
+        partition_arrays.append(matrix.partition_values[p])
+
+    return _spmv_sell_kernel(
+        matrix.config,
         x,
-        matrix.n_rows,
-        matrix.max_nnz_per_row,
+        matrix.inverse_perm,
+        *partition_arrays,
     )

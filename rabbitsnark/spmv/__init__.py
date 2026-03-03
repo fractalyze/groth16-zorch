@@ -16,23 +16,26 @@
 """Sparse matrix-vector multiplication (SpMV) for BN254 scalar field.
 
 Provides CSR sparse matrix construction from R1CS constraints and
-vectorized SpMV for Groth16 proving (Az = A * z, Bz = B * z).
+SELL-format SpMV for Groth16 proving (Az = A * z, Bz = B * z).
 
 Example usage:
-    >>> from rabbitsnark.spmv import build_r1cs_matrices, spmv
+    >>> from rabbitsnark.spmv import build_r1cs_matrices, SELLMatrix, spmv_sell
     >>> A, B = build_r1cs_matrices(zkey, bn254_sf_mont)
-    >>> Az = spmv(A, z_mont)
-    >>> Bz = spmv(B, z_mont)
+    >>> sell_A = SELLMatrix.from_csr(A)
+    >>> Az = spmv_sell(sell_A, z_mont)
 """
 
 from .csr_matrix import CSRMatrix
 from .r1cs import build_r1cs_matrices, witness_to_montgomery
-from .spmv import _spmv_kernel, spmv
+from .sell import SELLConfig, SELLMatrix
+from .spmv import _spmv_sell_kernel, spmv_sell
 
 __all__ = [
     "CSRMatrix",
+    "SELLConfig",
+    "SELLMatrix",
     "build_r1cs_matrices",
-    "spmv",
+    "spmv_sell",
     "witness_to_montgomery",
-    "_spmv_kernel",
+    "_spmv_sell_kernel",
 ]
