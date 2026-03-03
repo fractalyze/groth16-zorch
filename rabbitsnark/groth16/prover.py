@@ -22,7 +22,7 @@ Separates one-time circuit compilation from per-proof computation:
 
 Architecture:
     compile(zkey) -> CompiledProver
-    |-- R1CS ELL arrays (from zkey)
+    |-- R1CS SELL arrays (from zkey)
     |-- NTT twiddle arrays
     |-- Coset shift powers
     |-- Point arrays (affine -> XYZZ)
@@ -74,8 +74,8 @@ from rabbitsnark.msm import (
     _to_xyzz_dtype,
 )
 from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
-from rabbitsnark.spmv import build_r1cs_matrices
-from rabbitsnark.spmv.spmv import _spmv_kernel
+from rabbitsnark.spmv import SELLConfig, SELLMatrix, build_r1cs_matrices
+from rabbitsnark.spmv.spmv import _spmv_sell_kernel
 
 from .proof import Groth16Proof, write_public_signals  # noqa: F401
 
@@ -96,11 +96,9 @@ BN254_SCALAR_BITS = 254
 class ProveConfig(NamedTuple):
     """Static configuration for _prove_core (compile-time constants)."""
 
-    # Arithmetic
-    n_rows_a: int
-    max_nnz_a: int
-    n_rows_b: int
-    max_nnz_b: int
+    # SELL SpMV
+    sell_config_a: SELLConfig
+    sell_config_b: SELLConfig
     log_n: int
     # Scalar decomposition / MSM
     scalar_bits: int
@@ -118,11 +116,11 @@ class CompiledProver:
     """
 
     config: ProveConfig
-    # R1CS ELL arrays
-    ell_col_a: Array
-    ell_val_a: Array
-    ell_col_b: Array
-    ell_val_b: Array
+    # SELL SpMV arrays
+    sell_perm_a: Array
+    sell_arrays_a: tuple[Array, ...]
+    sell_perm_b: Array
+    sell_arrays_b: tuple[Array, ...]
     # NTT arrays (per-stage twiddles, pre-extracted)
     fwd_stage_twiddles: tuple[Array, ...]
     inv_stage_twiddles: tuple[Array, ...]
@@ -180,10 +178,8 @@ class CompiledProver:
 
         r_arr = jnp.array([r_int], dtype=bn254_sf)
         s_arr = jnp.array([s_int], dtype=bn254_sf)
-        neg_rs_int = (
-            BN254_FR_MODULUS - (r_int * s_int) % BN254_FR_MODULUS
-        ) % BN254_FR_MODULUS
-        neg_rs_arr = jnp.array([neg_rs_int], dtype=bn254_sf)
+        neg_rs = -(bn254_sf(r_int) * bn254_sf(s_int))
+        neg_rs_arr = jnp.array([neg_rs], dtype=bn254_sf)
 
         pi_a, pi_b2, pi_c = _prove_core(
             self.config,
@@ -191,11 +187,11 @@ class CompiledProver:
             r_arr,
             s_arr,
             neg_rs_arr,
-            # R1CS ELL arrays
-            self.ell_col_a,
-            self.ell_val_a,
-            self.ell_col_b,
-            self.ell_val_b,
+            # SELL SpMV arrays
+            self.sell_perm_a,
+            self.sell_arrays_a,
+            self.sell_perm_b,
+            self.sell_arrays_b,
             # NTT arrays (per-stage twiddles)
             self.fwd_stage_twiddles,
             self.inv_stage_twiddles,
@@ -255,23 +251,23 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     vk = zkey.verifying_key
 
     m = num_vars
-    p = BN254_FR_MODULUS
 
-    # R1CS matrices -> ELL arrays
-    matrix_a, matrix_b = build_r1cs_matrices(zkey, bn254_sf_mont)
+    # R1CS matrices -> SELL format
+    csr_a, csr_b = build_r1cs_matrices(zkey, bn254_sf_mont)
+    sell_a = SELLMatrix.from_csr(csr_a)
+    sell_b = SELLMatrix.from_csr(csr_b)
 
     # NTT per-stage twiddle arrays
     ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
     fwd_stage_twiddles, inv_stage_twiddles, inv_n = ntt.get_stage_twiddles(log_n)
 
-    # Coset shift powers: [1, g, g^2, ..., g^(n-1)] where g = omega_{2n}
+    # Coset shift powers: [1, g, g², ..., g^(n-1)] where g = omega_{2n}
     # Pre-computed outside JIT (256-bit constants can't be created during JIT)
-    omega_2n_int = pow(
-        BN254_FR_ROOT_OF_UNITY,
-        1 << (BN254_TWO_ADIC_BITS - log_n - 1),
-        p,
+    coset_shift = jnp.array(
+        bn254_sf_mont(BN254_FR_ROOT_OF_UNITY)
+        ** (1 << (BN254_TWO_ADIC_BITS - log_n - 1)),
+        dtype=bn254_sf_mont,
     )
-    coset_shift = jnp.array(omega_2n_int, dtype=bn254_sf_mont)
     shift_powers = _build_shift_powers(coset_shift, log_n)
 
     # Point arrays: affine -> XYZZ (for MSM)
@@ -332,10 +328,8 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     )
 
     config = ProveConfig(
-        n_rows_a=matrix_a.n_rows,
-        max_nnz_a=matrix_a.max_nnz_per_row,
-        n_rows_b=matrix_b.n_rows,
-        max_nnz_b=matrix_b.max_nnz_per_row,
+        sell_config_a=sell_a.config,
+        sell_config_b=sell_b.config,
         log_n=log_n,
         scalar_bits=BN254_SCALAR_BITS,
         wb_main=wb_main,
@@ -346,10 +340,10 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
 
     return CompiledProver(
         config=config,
-        ell_col_a=matrix_a.ell_col_indices,
-        ell_val_a=matrix_a.ell_values,
-        ell_col_b=matrix_b.ell_col_indices,
-        ell_val_b=matrix_b.ell_values,
+        sell_perm_a=sell_a.inverse_perm,
+        sell_arrays_a=sell_a.partition_arrays(),
+        sell_perm_b=sell_b.inverse_perm,
+        sell_arrays_b=sell_b.partition_arrays(),
         fwd_stage_twiddles=fwd_stage_twiddles,
         inv_stage_twiddles=inv_stage_twiddles,
         inv_n=inv_n,
@@ -391,11 +385,11 @@ def _prove_core(
     r_arr: Array,
     s_arr: Array,
     neg_rs_arr: Array,
-    # R1CS ELL arrays
-    ell_col_a: Array,
-    ell_val_a: Array,
-    ell_col_b: Array,
-    ell_val_b: Array,
+    # SELL SpMV arrays
+    sell_perm_a: Array,
+    sell_arrays_a: tuple[Array, ...],
+    sell_perm_b: Array,
+    sell_arrays_b: tuple[Array, ...],
     # NTT arrays (per-stage twiddles)
     fwd_stage_tw: tuple[Array, ...],
     inv_stage_tw: tuple[Array, ...],
@@ -447,9 +441,9 @@ def _prove_core(
     # ---------------------------------------------------------------
     z_mont = lax.bitcast_convert_type(z_std, bn254_sf_mont)
 
-    # SpMV: Az = A*z, Bz = B*z
-    az = _spmv_kernel(ell_col_a, ell_val_a, z_mont, config.n_rows_a, config.max_nnz_a)
-    bz = _spmv_kernel(ell_col_b, ell_val_b, z_mont, config.n_rows_b, config.max_nnz_b)
+    # SpMV: Az = A*z, Bz = B*z (SELL format)
+    az = _spmv_sell_kernel(config.sell_config_a, z_mont, sell_perm_a, *sell_arrays_a)
+    bz = _spmv_sell_kernel(config.sell_config_b, z_mont, sell_perm_b, *sell_arrays_b)
 
     # Hadamard: Cz = Az * Bz
     cz = az * bz
@@ -567,7 +561,7 @@ def _prove_core(
 
 
 def _build_shift_powers(shift: Array, log_n: int) -> Array:
-    """Build coset shift powers [1, g, g^2, ..., g^(n-1)] via O(log n) doubling."""
+    """Build coset shift powers [1, g, g², ..., g^(n-1)] via O(log n) doubling."""
     dtype = shift.dtype
     one = dtype.type(1)
     powers = jnp.array([one], dtype=dtype)

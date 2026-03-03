@@ -54,7 +54,6 @@ def build_r1cs_matrices(
     """
     n_rows = zkey.domain_size
     n_cols = zkey.header_groth.num_vars
-    modulus = zkey.header_groth.r.to_int()
 
     matrix_a = CSRMatrix.from_coefficients(
         zkey.coefficients,
@@ -62,7 +61,6 @@ def build_r1cs_matrices(
         n_rows=n_rows,
         n_cols=n_cols,
         dtype=dtype,
-        modulus=modulus,
     )
 
     matrix_b = CSRMatrix.from_coefficients(
@@ -71,7 +69,6 @@ def build_r1cs_matrices(
         n_rows=n_rows,
         n_cols=n_cols,
         dtype=dtype,
-        modulus=modulus,
     )
 
     return matrix_a, matrix_b
@@ -80,7 +77,6 @@ def build_r1cs_matrices(
 def witness_to_montgomery(
     witnesses: np.ndarray | list[int],
     dtype: type,
-    modulus: int,
 ) -> Array:
     """Convert witness data from standard form to Montgomery form.
 
@@ -90,7 +86,6 @@ def witness_to_montgomery(
     Args:
         witnesses: Witness values in standard form (integers).
         dtype: Target ZK field dtype (e.g., bn254_sf_mont).
-        modulus: Scalar field modulus.
 
     Returns:
         JAX array of witness values in Montgomery form.
