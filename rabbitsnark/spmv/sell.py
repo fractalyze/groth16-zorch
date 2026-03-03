@@ -234,6 +234,18 @@ class SELLMatrix:
             inverse_perm=jnp.array(inverse_perm.tolist(), dtype=jnp.int32),
         )
 
+    def partition_arrays(self) -> tuple[Array, ...]:
+        """Build flat alternating (col_indices, values) tuple for all partitions.
+
+        Returns:
+            Tuple of (col_0, val_0, col_1, val_1, ..., col_{P-1}, val_{P-1}).
+        """
+        arrays: list[Array] = []
+        for p in range(self.config.num_partitions):
+            arrays.append(self.partition_col_indices[p])
+            arrays.append(self.partition_values[p])
+        return tuple(arrays)
+
     def stats(self) -> dict:
         """Compute partition statistics and memory savings vs plain ELL.
 

@@ -97,15 +97,9 @@ def spmv_sell(matrix: SELLMatrix, x: Array) -> Array:
     Returns:
         Dense result vector, shape (n_rows,).
     """
-    # Flatten partition arrays into alternating (col, val, col, val, ...)
-    partition_arrays = []
-    for p in range(matrix.config.num_partitions):
-        partition_arrays.append(matrix.partition_col_indices[p])
-        partition_arrays.append(matrix.partition_values[p])
-
     return _spmv_sell_kernel(
         matrix.config,
         x,
         matrix.inverse_perm,
-        *partition_arrays,
+        *matrix.partition_arrays(),
     )

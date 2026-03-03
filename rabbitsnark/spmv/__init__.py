@@ -28,7 +28,7 @@ Example usage:
 from .csr_matrix import CSRMatrix
 from .r1cs import build_r1cs_matrices, witness_to_montgomery
 from .sell import SELLConfig, SELLMatrix
-from .spmv import _spmv_sell_kernel, spmv_sell
+from .spmv import spmv_sell
 
 __all__ = [
     "CSRMatrix",
@@ -37,5 +37,4 @@ __all__ = [
     "build_r1cs_matrices",
     "spmv_sell",
     "witness_to_montgomery",
-    "_spmv_sell_kernel",
 ]

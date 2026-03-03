@@ -74,8 +74,7 @@ from rabbitsnark.msm import (
     _to_xyzz_dtype,
 )
 from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
-from rabbitsnark.spmv import SELLMatrix, build_r1cs_matrices
-from rabbitsnark.spmv.sell import SELLConfig
+from rabbitsnark.spmv import SELLConfig, SELLMatrix, build_r1cs_matrices
 from rabbitsnark.spmv.spmv import _spmv_sell_kernel
 
 from .proof import Groth16Proof, write_public_signals  # noqa: F401
@@ -342,9 +341,9 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     return CompiledProver(
         config=config,
         sell_perm_a=sell_a.inverse_perm,
-        sell_arrays_a=_sell_partition_arrays(sell_a),
+        sell_arrays_a=sell_a.partition_arrays(),
         sell_perm_b=sell_b.inverse_perm,
-        sell_arrays_b=_sell_partition_arrays(sell_b),
+        sell_arrays_b=sell_b.partition_arrays(),
         fwd_stage_twiddles=fwd_stage_twiddles,
         inv_stage_twiddles=inv_stage_twiddles,
         inv_n=inv_n,
@@ -576,15 +575,6 @@ def _build_shift_powers(shift: Array, log_n: int) -> Array:
 # ---------------------------------------------------------------------------
 # Preprocessing helpers (called outside JIT)
 # ---------------------------------------------------------------------------
-
-
-def _sell_partition_arrays(sell: SELLMatrix) -> tuple[Array, ...]:
-    """Build flat alternating (col_indices, values) tuple for all partitions."""
-    arrays: list[Array] = []
-    for p in range(sell.config.num_partitions):
-        arrays.append(sell.partition_col_indices[p])
-        arrays.append(sell.partition_values[p])
-    return tuple(arrays)
 
 
 def _g1_to_xyzz(point: G1Point) -> Array:
