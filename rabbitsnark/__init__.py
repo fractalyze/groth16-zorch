@@ -20,7 +20,7 @@ __version__ = "0.1.0"
 # not yet available; defer import to avoid ImportError at package level.
 import importlib as _importlib
 
-from rabbitsnark import msm, ntt, spmv
+from rabbitsnark import msm, ntt
 
 
 def __getattr__(name: str):
@@ -34,5 +34,4 @@ __all__ = [
     "groth16",
     "msm",
     "ntt",
-    "spmv",
 ]

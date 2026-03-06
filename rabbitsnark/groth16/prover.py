@@ -17,23 +17,21 @@
 
 Separates one-time circuit compilation from per-proof computation:
 
-    compiled = compile(zkey)            # parse zkey, build arrays (one-time)
-    proof, signals = compiled.prove(wtns)  # generate proof (per-witness)
+    compiled = compile(zkey)                         # parse zkey (one-time)
+    proof, signals = compiled.prove(wtns, az, bz)    # generate proof (per-witness)
 
 Architecture:
     compile(zkey) -> CompiledProver
-    |-- R1CS ELL arrays (from zkey)
     |-- NTT twiddle arrays
     |-- Coset shift powers
     |-- Point arrays (affine -> XYZZ)
     |-- EC zero pre-allocation
     +-- Delta points
 
-    CompiledProver.prove(wtns)
+    CompiledProver.prove(wtns, az_mont, bz_mont)
     |-- Input preparation: z_std, r, s, neg_rs  (per-proof)
     +-- _prove_core(config, ...)  <- single JIT dispatch
-       |-- z_mont = bitcast_convert_type(z_std, bn254_sf_mont)
-       |-- SpMV x 2, Hadamard
+       |-- Cz = Az ⊙ Bz (Hadamard)
        |-- IFFT x 3 (stage twiddles via static strided slicing)
        |-- Coset NTT x 3
        |-- Quotient: h_evals_mont = a_coset * b_coset - c_coset
@@ -68,9 +66,6 @@ from zk_dtypes import (
 
 from rabbitsnark.msm import MSM
 from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
-from rabbitsnark.spmv import build_r1cs_matrices
-from rabbitsnark.spmv.spmv import _spmv_kernel
-
 from .proof import Groth16Proof, write_public_signals  # noqa: F401
 
 if TYPE_CHECKING:
@@ -91,10 +86,6 @@ class ProveConfig(NamedTuple):
     """Static configuration for _prove_core (compile-time constants)."""
 
     # Arithmetic
-    n_rows_a: int
-    max_nnz_a: int
-    n_rows_b: int
-    max_nnz_b: int
     log_n: int
     # Scalar decomposition / MSM
     scalar_bits: int
@@ -118,11 +109,6 @@ class CompiledProver:
     """
 
     config: ProveConfig
-    # R1CS ELL arrays
-    ell_col_a: Array
-    ell_val_a: Array
-    ell_col_b: Array
-    ell_val_b: Array
     # NTT arrays (per-stage twiddles, pre-extracted)
     fwd_stage_twiddles: tuple[Array, ...]
     inv_stage_twiddles: tuple[Array, ...]
@@ -159,6 +145,8 @@ class CompiledProver:
     def prove(
         self,
         wtns: WtnsV2,
+        az_mont: Array,
+        bz_mont: Array,
         *,
         no_zk: bool = False,
     ) -> tuple[Groth16Proof, list[str]]:
@@ -166,6 +154,8 @@ class CompiledProver:
 
         Args:
             wtns: Parsed witness (WtnsV2).
+            az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
+            bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
             no_zk: If True, use r=s=0 for a deterministic (non-ZK) proof.
 
         Returns:
@@ -192,11 +182,8 @@ class CompiledProver:
             r_arr,
             s_arr,
             neg_rs_arr,
-            # R1CS ELL arrays
-            self.ell_col_a,
-            self.ell_val_a,
-            self.ell_col_b,
-            self.ell_val_b,
+            az_mont,
+            bz_mont,
             # NTT arrays (per-stage twiddles)
             self.fwd_stage_twiddles,
             self.inv_stage_twiddles,
@@ -238,9 +225,9 @@ class CompiledProver:
 def compile(zkey: ZKeyV1) -> CompiledProver:
     """Compile a proving key into a reusable prover.
 
-    Pre-computes all circuit-constant data (R1CS matrices, NTT twiddles,
-    point arrays, EC zeros, delta points).  The returned ``CompiledProver``
-    can generate multiple proofs via ``prove(wtns)``.
+    Pre-computes all circuit-constant data (NTT twiddles, point arrays,
+    EC zeros, delta points).  The returned ``CompiledProver`` can generate
+    multiple proofs via ``prove(wtns, az_mont, bz_mont)``.
 
     Args:
         zkey: Parsed proving key (ZKeyV1).
@@ -256,9 +243,6 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
 
     m = num_vars
     p = BN254_FR_MODULUS
-
-    # R1CS matrices -> ELL arrays
-    matrix_a, matrix_b = build_r1cs_matrices(zkey, bn254_sf_mont)
 
     # NTT per-stage twiddle arrays
     ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
@@ -366,10 +350,6 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     )
 
     config = ProveConfig(
-        n_rows_a=matrix_a.n_rows,
-        max_nnz_a=matrix_a.max_nnz_per_row,
-        n_rows_b=matrix_b.n_rows,
-        max_nnz_b=matrix_b.max_nnz_per_row,
         log_n=log_n,
         scalar_bits=BN254_SCALAR_BITS,
         wb_main=wb_main,
@@ -385,10 +365,6 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
 
     return CompiledProver(
         config=config,
-        ell_col_a=matrix_a.ell_col_indices,
-        ell_val_a=matrix_a.ell_values,
-        ell_col_b=matrix_b.ell_col_indices,
-        ell_val_b=matrix_b.ell_values,
         fwd_stage_twiddles=fwd_stage_twiddles,
         inv_stage_twiddles=inv_stage_twiddles,
         inv_n=inv_n,
@@ -428,11 +404,8 @@ def _prove_core(
     r_arr: Array,
     s_arr: Array,
     neg_rs_arr: Array,
-    # R1CS ELL arrays
-    ell_col_a: Array,
-    ell_val_a: Array,
-    ell_col_b: Array,
-    ell_val_b: Array,
+    az_mont: Array,
+    bz_mont: Array,
     # NTT arrays (per-stage twiddles)
     fwd_stage_tw: tuple[Array, ...],
     inv_stage_tw: tuple[Array, ...],
@@ -464,35 +437,30 @@ def _prove_core(
     delta_g1: Array,
     delta_g2: Array,
 ) -> tuple[Array, Array, Array]:
-    """Single JIT kernel: Arithmetic -> Decomposition -> MSMs -> Affine.
+    """Single JIT kernel: Hadamard + NTT + Decomposition + MSMs -> Affine.
 
+    Accepts pre-computed Az, Bz (Montgomery form) from external SpMV.
     MSMs 1-5 use data-level parallelism via ``MSM.pippenger``:
     each MSM is split into P independent partitions that ThunkExecutor
     can schedule in parallel.  ZK blinding uses direct scalar
     multiplication via ``*`` operator.
     """
     log_n = config.log_n
-    n = 1 << log_n
     sb = config.scalar_bits
     wb_main = config.wb_main
     wb_h = config.wb_h
     l = config.num_public  # noqa: E741
 
     # ---------------------------------------------------------------
-    # Stage 1: Arithmetic (SpMV + NTT + quotient) in Montgomery form
+    # Stage 1: Arithmetic (Hadamard + NTT + quotient) in Montgomery form
     # ---------------------------------------------------------------
-    z_mont = lax.bitcast_convert_type(z_std, bn254_sf_mont)
 
-    # SpMV: Az = A*z, Bz = B*z
-    az = _spmv_kernel(ell_col_a, ell_val_a, z_mont, config.n_rows_a, config.max_nnz_a)
-    bz = _spmv_kernel(ell_col_b, ell_val_b, z_mont, config.n_rows_b, config.max_nnz_b)
-
-    # Hadamard: Cz = Az * Bz
-    cz = az * bz
+    # Hadamard: Cz = Az ⊙ Bz
+    cz = az_mont * bz_mont
 
     # IFFT x 3
-    a_poly = NTT.inverse_ntt(az, inv_n, log_n, *inv_stage_tw)
-    b_poly = NTT.inverse_ntt(bz, inv_n, log_n, *inv_stage_tw)
+    a_poly = NTT.inverse_ntt(az_mont, inv_n, log_n, *inv_stage_tw)
+    b_poly = NTT.inverse_ntt(bz_mont, inv_n, log_n, *inv_stage_tw)
     c_poly = NTT.inverse_ntt(cz, inv_n, log_n, *inv_stage_tw)
 
     # Coset NTT x 3 (shift_powers pre-computed outside JIT)
