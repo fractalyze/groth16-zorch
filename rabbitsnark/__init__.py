@@ -16,12 +16,11 @@
 
 __version__ = "0.1.0"
 
-from rabbitsnark import groth16, msm, ntt, spmv
+from rabbitsnark import groth16, msm, ntt
 
 __all__ = [
     "__version__",
     "groth16",
     "msm",
     "ntt",
-    "spmv",
 ]
