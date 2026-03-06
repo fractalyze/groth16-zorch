@@ -17,23 +17,21 @@
 
 Separates one-time circuit compilation from per-proof computation:
 
-    compiled = compile(zkey)            # parse zkey, build arrays (one-time)
-    proof, signals = compiled.prove(wtns)  # generate proof (per-witness)
+    compiled = compile(zkey)                         # parse zkey (one-time)
+    proof, signals = compiled.prove(wtns, az, bz)    # generate proof (per-witness)
 
 Architecture:
     compile(zkey) -> CompiledProver
-    |-- R1CS SELL arrays (from zkey)
     |-- NTT twiddle arrays
     |-- Coset shift powers
     |-- Point arrays (affine -> XYZZ)
     |-- EC zero pre-allocation
     +-- Delta points
 
-    CompiledProver.prove(wtns)
+    CompiledProver.prove(wtns, az_mont, bz_mont)
     |-- Input preparation: z_std, r, s, neg_rs  (per-proof)
     +-- _prove_core(config, ...)  <- single JIT dispatch
-       |-- z_mont = bitcast_convert_type(z_std, bn254_sf_mont)
-       |-- SpMV x 2, Hadamard
+       |-- Cz = Az ⊙ Bz (Hadamard)
        |-- IFFT x 3 (stage twiddles via static strided slicing)
        |-- Coset NTT x 3
        |-- Quotient: h_evals_mont = a_coset * b_coset - c_coset
@@ -74,8 +72,6 @@ from rabbitsnark.msm import (
     _to_xyzz_dtype,
 )
 from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
-from rabbitsnark.spmv import SELLConfig, SELLMatrix, build_r1cs_matrices
-from rabbitsnark.spmv.spmv import _spmv_sell_kernel
 
 from .proof import Groth16Proof, write_public_signals  # noqa: F401
 
@@ -96,9 +92,7 @@ BN254_SCALAR_BITS = 254
 class ProveConfig(NamedTuple):
     """Static configuration for _prove_core (compile-time constants)."""
 
-    # SELL SpMV
-    sell_config_a: SELLConfig
-    sell_config_b: SELLConfig
+    # Arithmetic
     log_n: int
     # Scalar decomposition / MSM
     scalar_bits: int
@@ -112,15 +106,11 @@ class ProveConfig(NamedTuple):
 class CompiledProver:
     """Pre-compiled proving key -- reusable across proofs.
 
-    Created by ``compile(zkey)``. Call ``prove(wtns)`` to generate proofs.
+    Created by ``compile(zkey)``. Call ``prove(wtns, az_mont, bz_mont)``
+    to generate proofs.
     """
 
     config: ProveConfig
-    # SELL SpMV arrays
-    sell_perm_a: Array
-    sell_arrays_a: tuple[Array, ...]
-    sell_perm_b: Array
-    sell_arrays_b: tuple[Array, ...]
     # NTT arrays (per-stage twiddles, pre-extracted)
     fwd_stage_twiddles: tuple[Array, ...]
     inv_stage_twiddles: tuple[Array, ...]
@@ -156,6 +146,8 @@ class CompiledProver:
     def prove(
         self,
         wtns: WtnsV2,
+        az_mont: Array,
+        bz_mont: Array,
         *,
         no_zk: bool = False,
     ) -> tuple[Groth16Proof, list[str]]:
@@ -163,6 +155,8 @@ class CompiledProver:
 
         Args:
             wtns: Parsed witness (WtnsV2).
+            az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
+            bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
             no_zk: If True, use r=s=0 for a deterministic (non-ZK) proof.
 
         Returns:
@@ -187,11 +181,8 @@ class CompiledProver:
             r_arr,
             s_arr,
             neg_rs_arr,
-            # SELL SpMV arrays
-            self.sell_perm_a,
-            self.sell_arrays_a,
-            self.sell_perm_b,
-            self.sell_arrays_b,
+            az_mont,
+            bz_mont,
             # NTT arrays (per-stage twiddles)
             self.fwd_stage_twiddles,
             self.inv_stage_twiddles,
@@ -234,9 +225,9 @@ class CompiledProver:
 def compile(zkey: ZKeyV1) -> CompiledProver:
     """Compile a proving key into a reusable prover.
 
-    Pre-computes all circuit-constant data (R1CS matrices, NTT twiddles,
-    point arrays, EC zeros, delta points).  The returned ``CompiledProver``
-    can generate multiple proofs via ``prove(wtns)``.
+    Pre-computes all circuit-constant data (NTT twiddles, point arrays,
+    EC zeros, delta points).  The returned ``CompiledProver`` can generate
+    multiple proofs via ``prove(wtns, az_mont, bz_mont)``.
 
     Args:
         zkey: Parsed proving key (ZKeyV1).
@@ -251,11 +242,6 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     vk = zkey.verifying_key
 
     m = num_vars
-
-    # R1CS matrices -> SELL format
-    csr_a, csr_b = build_r1cs_matrices(zkey, bn254_sf_mont)
-    sell_a = SELLMatrix.from_csr(csr_a)
-    sell_b = SELLMatrix.from_csr(csr_b)
 
     # NTT per-stage twiddle arrays
     ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
@@ -328,8 +314,6 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
     )
 
     config = ProveConfig(
-        sell_config_a=sell_a.config,
-        sell_config_b=sell_b.config,
         log_n=log_n,
         scalar_bits=BN254_SCALAR_BITS,
         wb_main=wb_main,
@@ -340,10 +324,6 @@ def compile(zkey: ZKeyV1) -> CompiledProver:
 
     return CompiledProver(
         config=config,
-        sell_perm_a=sell_a.inverse_perm,
-        sell_arrays_a=sell_a.partition_arrays(),
-        sell_perm_b=sell_b.inverse_perm,
-        sell_arrays_b=sell_b.partition_arrays(),
         fwd_stage_twiddles=fwd_stage_twiddles,
         inv_stage_twiddles=inv_stage_twiddles,
         inv_n=inv_n,
@@ -385,11 +365,8 @@ def _prove_core(
     r_arr: Array,
     s_arr: Array,
     neg_rs_arr: Array,
-    # SELL SpMV arrays
-    sell_perm_a: Array,
-    sell_arrays_a: tuple[Array, ...],
-    sell_perm_b: Array,
-    sell_arrays_b: tuple[Array, ...],
+    az_mont: Array,
+    bz_mont: Array,
     # NTT arrays (per-stage twiddles)
     fwd_stage_tw: tuple[Array, ...],
     inv_stage_tw: tuple[Array, ...],
@@ -422,14 +399,14 @@ def _prove_core(
     delta_g1: Array,
     delta_g2: Array,
 ) -> tuple[Array, Array, Array]:
-    """Single JIT kernel: Arithmetic -> Decomposition -> MSMs -> Affine.
+    """Single JIT kernel: Hadamard + NTT + Decomposition + MSMs -> Affine.
 
+    Accepts pre-computed Az, Bz (Montgomery form) from external SpMV.
     ZK blinding is always computed.  When r=s=0 the blinding MSMs produce
     identity (zero windows -> Pippenger returns identity) so the result is
     equivalent to a non-ZK proof with no compile-time branching.
     """
     log_n = config.log_n
-    n = 1 << log_n
     sb = config.scalar_bits
     wb_main = config.wb_main
     wb_h = config.wb_h
@@ -437,20 +414,15 @@ def _prove_core(
     l = config.num_public  # noqa: E741
 
     # ---------------------------------------------------------------
-    # Stage 1: Arithmetic (SpMV + NTT + quotient) in Montgomery form
+    # Stage 1: Arithmetic (Hadamard + NTT + quotient) in Montgomery form
     # ---------------------------------------------------------------
-    z_mont = lax.bitcast_convert_type(z_std, bn254_sf_mont)
 
-    # SpMV: Az = A*z, Bz = B*z (SELL format)
-    az = _spmv_sell_kernel(config.sell_config_a, z_mont, sell_perm_a, *sell_arrays_a)
-    bz = _spmv_sell_kernel(config.sell_config_b, z_mont, sell_perm_b, *sell_arrays_b)
-
-    # Hadamard: Cz = Az * Bz
-    cz = az * bz
+    # Hadamard: Cz = Az ⊙ Bz
+    cz = az_mont * bz_mont
 
     # IFFT x 3
-    a_poly = NTT.inverse_ntt(az, inv_n, log_n, *inv_stage_tw)
-    b_poly = NTT.inverse_ntt(bz, inv_n, log_n, *inv_stage_tw)
+    a_poly = NTT.inverse_ntt(az_mont, inv_n, log_n, *inv_stage_tw)
+    b_poly = NTT.inverse_ntt(bz_mont, inv_n, log_n, *inv_stage_tw)
     c_poly = NTT.inverse_ntt(cz, inv_n, log_n, *inv_stage_tw)
 
     # Coset NTT x 3 (shift_powers pre-computed outside JIT)
