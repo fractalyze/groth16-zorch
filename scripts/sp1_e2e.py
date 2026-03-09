@@ -111,9 +111,11 @@ def main():
     t0 = time.perf_counter()
     data = load_gnark_export(export_dir)
     t_load = time.perf_counter() - t0
-    print(f"Load: {t_load:.1f}s  "
-          f"(wires={data.num_wires:,}, constraints={data.num_constraints:,}, "
-          f"domain={data.domain_size:,})")
+    print(
+        f"Load: {t_load:.1f}s  "
+        f"(wires={data.num_wires:,}, constraints={data.num_constraints:,}, "
+        f"domain={data.domain_size:,})"
+    )
 
     # --- Compile ---
     print("\nCompiling proving key...")
