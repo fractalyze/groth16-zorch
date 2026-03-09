@@ -138,12 +138,7 @@ class NTT:
             bot = blocks[:, half_block:, :]
             data = jnp.concatenate([top + bot, (top - bot) * tw], axis=1).reshape(n, 1)
 
-        # Scale BEFORE bit-reverse: ZKX JIT has a fusion bug where
-        # bit_reverse(array) * scalar produces incorrect results.
-        # Swapping the order avoids the buggy fusion (elementwise scale
-        # commutes with permutation, so result is mathematically identical).
-        data = data[:, 0] * inv_n
-        return lax.bit_reverse(data, dimensions=[0])
+        return lax.bit_reverse(data[:, 0], dimensions=[0]) * inv_n
 
     # ------------------------------------------------------------------
     # Twiddle factor computation and caching
