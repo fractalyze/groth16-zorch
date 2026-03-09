@@ -27,8 +27,8 @@ class GnarkProvingData:
     """All data needed to generate a gnark Groth16 proof.
 
     Loaded from the binary export produced by cmd/export.
-    All field elements are standard-form integers (not Montgomery).
-    All points are affine coordinates as standard-form integers.
+    Field elements and coordinates are in Montgomery form (raw bytes on disk).
+    All points are affine coordinates.
     """
 
     # Sizes
@@ -40,7 +40,7 @@ class GnarkProvingData:
     domain_size: int
 
     # Witness (from Go solver)
-    witness_full: np.ndarray  # (num_wires,) bn254_sf
+    witness_full: np.ndarray  # (num_wires,) bn254_sf_mont
 
     # Solution vectors (from Go solver)
     solution_a: np.ndarray  # (num_constraints,) int objects

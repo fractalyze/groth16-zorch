@@ -18,9 +18,12 @@
 from __future__ import annotations
 
 import json
+import struct
+import time
 from pathlib import Path
 
 import numpy as np
+from zk_dtypes import bn254_g1_affine, bn254_g2_affine, bn254_sf_mont
 
 from .types import GnarkProvingData, HintData, HintInstruction
 
@@ -58,9 +61,7 @@ def load_gnark_export(
     num_constraints = meta["num_constraints"]
     domain_size = meta["domain_size"]
 
-    import time
-
-    # Witness — load directly as bn254_sf for efficient GPU transfer
+    # Witness — load directly as bn254_sf_mont (Montgomery form on disk)
     t = time.perf_counter()
     witness_full = _read_field_elements_native(d / "witness_full.bin", num_wires)
     print(f"  witness_full: {time.perf_counter() - t:.1f}s")
@@ -173,14 +174,12 @@ def _read_field_elements(path: Path, count: int) -> np.ndarray:
 
 
 def _read_field_elements_native(path: Path, count: int) -> np.ndarray:
-    """Read 32-byte LE field elements directly as bn254_sf numpy array."""
-    from zk_dtypes import bn254_sf
-
+    """Read 32-byte LE Montgomery-form field elements as bn254_sf_mont."""
     raw = np.fromfile(str(path), dtype=np.uint8)
     assert (
         raw.size == count * FIELD_ELEM_SIZE
     ), f"Expected {count * FIELD_ELEM_SIZE} bytes, got {raw.size} in {path}"
-    return raw.view(np.dtype(bn254_sf))
+    return raw.view(np.dtype(bn254_sf_mont))
 
 
 def _read_g1_points(path: Path) -> list[tuple[int, int]]:
@@ -197,8 +196,6 @@ def _read_g1_points_native(path: Path) -> np.ndarray:
     The binary format is 64 bytes per point (32B X + 32B Y, LE), which
     matches the zk_dtypes bn254_g1_affine memory layout exactly.
     """
-    from zk_dtypes import bn254_g1_affine
-
     raw = np.fromfile(str(path), dtype=np.uint8)
     return raw.view(np.dtype(bn254_g1_affine))
 
@@ -209,8 +206,6 @@ def _read_g2_points_native(path: Path) -> np.ndarray:
     The binary format is 128 bytes per point (4 × 32B, LE), which
     matches the zk_dtypes bn254_g2_affine memory layout exactly.
     """
-    from zk_dtypes import bn254_g2_affine
-
     raw = np.fromfile(str(path), dtype=np.uint8)
     return raw.view(np.dtype(bn254_g2_affine))
 
@@ -233,10 +228,8 @@ def _read_coo(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Read COO sparse matrix: (rows, cols, vals).
 
     Returns:
-        (rows uint32, cols uint32, vals bn254_sf numpy array).
+        (rows uint32, cols uint32, vals bn254_sf_mont numpy array).
     """
-    from zk_dtypes import bn254_sf
-
     raw = np.fromfile(str(path), dtype=np.uint8)
     count = raw.size // COO_ENTRY_SIZE
     data = raw.reshape(count, COO_ENTRY_SIZE)
@@ -245,9 +238,9 @@ def _read_coo(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     rows = np.ascontiguousarray(data[:, :4]).view(np.uint32).flatten()
     cols = np.ascontiguousarray(data[:, 4:8]).view(np.uint32).flatten()
 
-    # Values: view 32-byte LE directly as bn254_sf dtype (zero-copy)
+    # Values: view 32-byte LE directly as bn254_sf_mont dtype (zero-copy)
     val_bytes = np.ascontiguousarray(data[:, 8:40])
-    vals = val_bytes.view(np.dtype(bn254_sf)).flatten()
+    vals = val_bytes.view(np.dtype(bn254_sf_mont)).flatten()
 
     return rows, cols, vals
 
@@ -267,15 +260,11 @@ def _read_unknowns(path: Path, count: int) -> tuple[np.ndarray, np.ndarray]:
 
 def _load_hints(d: Path) -> HintData:
     """Load hint instructions, coefficient table, and per-level offsets."""
-    import struct
-
-    from zk_dtypes import bn254_sf
-
     # Load coefficient table
     coeff_raw = np.fromfile(str(d / "r1cs_coefficients.bin"), dtype=np.uint8)
     num_coeffs = int(np.frombuffer(coeff_raw[:4], dtype=np.uint32)[0])
     coeff_bytes = coeff_raw[4 : 4 + num_coeffs * FIELD_ELEM_SIZE]
-    coefficients = coeff_bytes.view(np.dtype(bn254_sf))
+    coefficients = coeff_bytes.view(np.dtype(bn254_sf_mont))
 
     # Load per-level hint offsets
     level_offsets = np.fromfile(

@@ -49,8 +49,10 @@ Architecture:
 
 from __future__ import annotations
 
+import json
 import math
 import secrets
+import time
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -59,6 +61,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import jax
 import jax.numpy as jnp
 import numpy as np
+import zk_dtypes
 from jax import lax
 from zk_dtypes import (
     bn254_g1_affine,
@@ -910,9 +913,6 @@ def compile_gnark_native(export_dir: str | Path) -> CompiledProver:
     Returns:
         Compiled prover ready for proof generation via ``prove_gnark()``.
     """
-    import json
-    import time
-
     from rabbitsnark.gnark.loader import (
         _read_g1_points_native,
         _read_g2_points_native,
@@ -1009,8 +1009,6 @@ _ZK_DTYPE_MAP: dict[str, type] = {}
 def _resolve_zk_dtype(name: str):
     """Resolve a zk_dtypes type name to its dtype class."""
     if not _ZK_DTYPE_MAP:
-        import zk_dtypes
-
         for attr in dir(zk_dtypes):
             obj = getattr(zk_dtypes, attr)
             if isinstance(obj, type):
@@ -1046,8 +1044,6 @@ def save_compiled_prover(prover: CompiledProver, cache_dir: str | Path) -> None:
         prover: A compiled prover to save.
         cache_dir: Directory to write cache files into.
     """
-    import json
-
     d = Path(cache_dir)
     d.mkdir(parents=True, exist_ok=True)
 
@@ -1101,9 +1097,6 @@ def load_compiled_prover(cache_dir: str | Path) -> CompiledProver:
     Returns:
         Compiled prover ready for proof generation.
     """
-    import json
-    import time
-
     d = Path(cache_dir)
     t_start = time.perf_counter()
 
@@ -1194,8 +1187,6 @@ def aot_compile(prover: CompiledProver) -> None:
         compiled = load_compiled_prover(cache_dir)
         proof = compiled.prove_gnark(...)  # ← cache hit, no LLVM work
     """
-    import time
-
     n = 1 << prover.config.log_n
 
     # --- AOT compile _prove_ntt (CPU, ~31s cold → cached) ---

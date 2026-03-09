@@ -136,10 +136,7 @@ def main():
     print(f"Solution prep: {t_prep:.1f}s")
 
     # --- Prove ---
-    # witness_full was loaded as bn254_sf via raw byte .view(), but the Go
-    # exporter writes Montgomery form.  Reinterpret as bn254_sf_mont so the
-    # prover can convert to standard form for MSM scalars.
-    witness_mont = data.witness_full.view(np.dtype(bn254_sf_mont))
+    witness_mont = data.witness_full  # already bn254_sf_mont from loader
     print(f"\nProving (split={args.split}, no_zk={args.no_zk})...")
     t0 = time.perf_counter()
     proof, public_signals = compiled.prove_gnark(
