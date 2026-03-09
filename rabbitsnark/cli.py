@@ -38,7 +38,7 @@ import time
 def _cmd_prove(args: argparse.Namespace) -> None:
     from rabbitsnark.circom.wtns import parse_wtns
     from rabbitsnark.circom.zkey import parse_zkey
-    from rabbitsnark.groth16 import compile
+    from rabbitsnark.groth16 import compile_circom
 
     print(f"Loading zkey: {args.zkey}")
     zkey = parse_zkey(args.zkey)
@@ -47,13 +47,13 @@ def _cmd_prove(args: argparse.Namespace) -> None:
 
     print("Compiling proving key...")
     t0 = time.time()
-    compiled = compile(zkey)
+    compiled = compile_circom(zkey)
     elapsed = time.time() - t0
     print(f"Compiled in {elapsed:.2f}s")
 
     print("Generating proof...")
     t0 = time.time()
-    proof, public_signals = compiled.prove(wtns)
+    proof, public_signals = compiled.prove_circom(wtns)
     elapsed = time.time() - t0
     print(f"Proof generated in {elapsed:.2f}s")
 
