@@ -13,18 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Groth16 zero-knowledge proof generation and verification."""
+"""Gnark Groth16 support: load exported circuit data and prove via JAX."""
 
-from .proof import Groth16Proof, write_public_signals
-from .prover import CompiledProver, compile_circom, compile_gnark
-from .verifier import VerificationKey, verify
+from .loader import load_gnark_export
+from .types import GnarkProvingData
 
 __all__ = [
-    "CompiledProver",
-    "Groth16Proof",
-    "VerificationKey",
-    "compile_circom",
-    "compile_gnark",
-    "verify",
-    "write_public_signals",
+    "GnarkProvingData",
+    "load_gnark_export",
 ]

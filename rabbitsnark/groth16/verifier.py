@@ -29,13 +29,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import lax
 from zk_dtypes import bn254_g1_affine, bn254_g2_affine, bn254_sf
 
 from rabbitsnark.circom.zkey.verifying_key import G1Point, G2Point
-from rabbitsnark.msm import MSMBn254
 
 from .proof import Groth16Proof
 
@@ -110,11 +110,15 @@ def verify(
     Returns:
         True if the proof is valid.
     """
-    # Validate public signals count
-    expected = len(vk.ic) - 1
-    if len(public_signals) != expected:
+    # Validate public signals count.
+    # snarkjs convention: len(IC) = num_public + 1 (IC[0] is base point)
+    # gnark convention:   len(IC) = num_public (no separate base point)
+    gnark_style = len(public_signals) == len(vk.ic)
+    snarkjs_style = len(public_signals) == len(vk.ic) - 1
+    if not gnark_style and not snarkjs_style:
         raise ValueError(
-            f"Expected {expected} public signals, got {len(public_signals)}"
+            f"Expected {len(vk.ic)} (gnark) or {len(vk.ic) - 1} (snarkjs) "
+            f"public signals, got {len(public_signals)}"
         )
 
     # Parse proof
@@ -128,16 +132,19 @@ def verify(
         pi_b = _parse_g2(proof_json["pi_b"])
         pi_c = _parse_g1(proof_json["pi_c"])
 
-    # Compute vk_x = IC[0] + sum_i(pub[i] * IC[i+1]) via MSM
+    # Compute vk_x via lax.msm
     pub_scalars = [int(s) for s in public_signals]
-    msm = MSMBn254()
-    msm_scalars = jnp.array([1] + pub_scalars, dtype=bn254_sf)
+    if gnark_style:
+        # gnark: vk_x = sum(pub[i] * IC[i])
+        msm_scalars = jnp.array(pub_scalars, dtype=bn254_sf)
+    else:
+        # snarkjs: vk_x = IC[0] + sum(pub[i] * IC[i+1])
+        msm_scalars = jnp.array([1] + pub_scalars, dtype=bn254_sf)
     msm_points = jnp.array(
         [bn254_g1_affine((pt.x, pt.y)) for pt in vk.ic],
         dtype=bn254_g1_affine,
     )
-    vk_x_xyzz = msm.compute(msm_scalars, msm_points)
-    vk_x_affine = lax.convert_element_type(vk_x_xyzz, bn254_g1_affine)
+    vk_x_affine = lax.msm(msm_scalars, msm_points)
 
     # Extract vk_x coordinates from JAX result
     vk_x_np = np.array(vk_x_affine).item()
@@ -169,7 +176,10 @@ def verify(
         dtype=bn254_g2_affine,
     )
 
-    result = lax.pairing_check(g1_points, g2_points)
+    # pairing_check only has CPU legalization — force CPU device.
+    cpu = jax.devices("cpu")[0]
+    with jax.default_device(cpu):
+        result = lax.pairing_check(g1_points, g2_points)
     return bool(result)
 
 

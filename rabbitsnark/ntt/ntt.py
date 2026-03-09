@@ -49,8 +49,8 @@ if TYPE_CHECKING:
     from jax import Array
 
 
-# Module-level twiddle cache keyed by dtype
-_twiddle_cache: dict[type, tuple[list, list, list]] = {}
+# Module-level twiddle cache keyed by (dtype, root_of_unity)
+_twiddle_cache: dict[tuple[type, int], tuple[list, list, list]] = {}
 
 
 class NTT:
@@ -138,9 +138,12 @@ class NTT:
             bot = blocks[:, half_block:, :]
             data = jnp.concatenate([top + bot, (top - bot) * tw], axis=1).reshape(n, 1)
 
-        # DIF: bit-reverse output (keep native HLO BitReverse)
-        data = lax.bit_reverse(data[:, 0], dimensions=[0])
-        return data * inv_n
+        # Scale BEFORE bit-reverse: ZKX JIT has a fusion bug where
+        # bit_reverse(array) * scalar produces incorrect results.
+        # Swapping the order avoids the buggy fusion (elementwise scale
+        # commutes with permutation, so result is mathematically identical).
+        data = data[:, 0] * inv_n
+        return lax.bit_reverse(data, dimensions=[0])
 
     # ------------------------------------------------------------------
     # Twiddle factor computation and caching
@@ -174,8 +177,8 @@ class NTT:
         Returns:
             Tuple of (inv_degrees, fwd_stage_twiddles, inv_stage_twiddles).
         """
-        # Limit precomputation to 2²⁰ for memory efficiency
-        practical_max_log_n = min(self.MAX_LOG_N, 20)
+        # Limit precomputation to 2²⁴ (sufficient for SP1 domain 2²⁴)
+        practical_max_log_n = min(self.MAX_LOG_N, 24)
         dtype = self.DTYPE
 
         # Compute omegas[k] = primitive 2^k-th root (dtype scalar).
@@ -218,9 +221,10 @@ class NTT:
 
     def _get_twiddles(self) -> tuple[list, list, list]:
         """Get or compute cached twiddle factors."""
-        if self.DTYPE not in _twiddle_cache:
-            _twiddle_cache[self.DTYPE] = self._compute_twiddles()
-        return _twiddle_cache[self.DTYPE]
+        key = (self.DTYPE, self.ROOT_OF_UNITY)
+        if key not in _twiddle_cache:
+            _twiddle_cache[key] = self._compute_twiddles()
+        return _twiddle_cache[key]
 
     def get_stage_twiddles(
         self, log_n: int

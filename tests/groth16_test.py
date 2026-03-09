@@ -35,7 +35,7 @@ from rabbitsnark.circom.zkey import parse_zkey
 from rabbitsnark.groth16 import (
     CompiledProver,
     Groth16Proof,
-    compile,
+    compile_circom,
     write_public_signals,
 )
 
@@ -86,16 +86,16 @@ class TestGroth16Prove(absltest.TestCase):
         test_data_dir = Path(__file__).parent / "data"
         self.zkey = parse_zkey(test_data_dir / "multiplier_3.zkey")
         self.wtns = parse_wtns(test_data_dir / "multiplier_3.wtns")
-        self.compiled = compile(self.zkey)
+        self.compiled = compile_circom(self.zkey)
         self.az_mont, self.bz_mont = _compute_az_bz(self.zkey, self.wtns)
 
     def test_compile_returns_compiled_prover(self):
-        """compile() returns a CompiledProver instance."""
+        """compile_circom() returns a CompiledProver instance."""
         self.assertIsInstance(self.compiled, CompiledProver)
 
     def test_prove_no_zk(self):
         """Deterministic proof (r=s=0) produces non-zero points."""
-        proof, public_signals = self.compiled.prove(
+        proof, public_signals = self.compiled.prove_circom(
             self.wtns,
             self.az_mont,
             self.bz_mont,
@@ -115,7 +115,7 @@ class TestGroth16Prove(absltest.TestCase):
 
     def test_public_signals(self):
         """Public signals are correctly extracted from witness."""
-        _, public_signals = self.compiled.prove(
+        _, public_signals = self.compiled.prove_circom(
             self.wtns,
             self.az_mont,
             self.bz_mont,
@@ -133,13 +133,13 @@ class TestGroth16Prove(absltest.TestCase):
 
     def test_prove_with_zk(self):
         """ZK proof (random r, s) differs from no-ZK proof."""
-        proof_no_zk, _ = self.compiled.prove(
+        proof_no_zk, _ = self.compiled.prove_circom(
             self.wtns,
             self.az_mont,
             self.bz_mont,
             no_zk=True,
         )
-        proof_zk, _ = self.compiled.prove(
+        proof_zk, _ = self.compiled.prove_circom(
             self.wtns,
             self.az_mont,
             self.bz_mont,
@@ -154,7 +154,7 @@ class TestGroth16Prove(absltest.TestCase):
 
     def test_proof_json_structure(self):
         """Proof JSON has snarkjs-compatible structure."""
-        proof, _ = self.compiled.prove(
+        proof, _ = self.compiled.prove_circom(
             self.wtns,
             self.az_mont,
             self.bz_mont,
@@ -178,13 +178,13 @@ class TestGroth16Prove(absltest.TestCase):
 
     def test_compile_prove_reuse(self):
         """Compiled prover can generate multiple proofs."""
-        proof1, _ = self.compiled.prove(
+        proof1, _ = self.compiled.prove_circom(
             self.wtns,
             self.az_mont,
             self.bz_mont,
             no_zk=True,
         )
-        proof2, _ = self.compiled.prove(
+        proof2, _ = self.compiled.prove_circom(
             self.wtns,
             self.az_mont,
             self.bz_mont,
