@@ -17,7 +17,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # TODO(chokobole): add more jobs like tests, build, etc.
+  test:
+    runs-on: [self-hosted, rabbitsnark-py]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        run: bazel --bazelrc=.bazelrc.ci test --config=ci //...
 
   pre-commit-style:
     runs-on: [self-hosted, rabbitsnark-py]
