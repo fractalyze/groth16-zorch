@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Groth16 prover implementation — compile + prove split.
+"""Groth16 prover implementation — compile + prove.
 
 Separates one-time circuit compilation from per-proof computation:
 
@@ -28,7 +28,7 @@ Architecture:
     +-- VK / Delta points (affine scalars)
 
     CompiledProver.prove_circom(wtns, az_mont, bz_mont)
-    |-- Input preparation: z_std, r, s, neg_rs  (per-proof)
+    |-- Input preparation: z_std, r, s, r*s  (per-proof)
     +-- Phase 1+2: _prove_phase12(config, ...)  <- JIT (GPU-safe)
     |  |-- Cz = Az ⊙ Bz (Hadamard)
     |  |-- IFFT x 3 (stage twiddles via static strided slicing)
@@ -92,6 +92,12 @@ BN254_FR_MODULUS = (
 # gnark uses the Fr multiplicative generator (= 5) as coset shift,
 # NOT omega_{2n} which circom/snarkjs uses.
 GNARK_COSET_GEN = 5
+
+# Fixed non-zero blinding factors for deterministic benchmarking.
+# Arbitrary values; chosen so that ZK blinding EC scalar multiplies execute
+# with realistic non-zero operands (unlike no_zk where r=s=0 skips work).
+_DETERMINISTIC_R = 7
+_DETERMINISTIC_S = 11
 # gnark uses 5^((p - 1) / 2²⁸) as the primitive 2²⁸-th root of unity.
 # BN254_FR_ROOT_OF_UNITY (from the NTT module) uses generator 7 instead of 5,
 # giving a different primitive root.  The prover MUST use the same root as the
@@ -102,7 +108,7 @@ GNARK_FR_ROOT_OF_UNITY = (
 
 
 class ProveConfig(NamedTuple):
-    """Static configuration for _prove_core (compile-time constants)."""
+    """Static configuration for proving (compile-time constants)."""
 
     log_n: int
     num_public: int  # l -- for z[l+1:m] slicing
@@ -147,16 +153,14 @@ class CompiledProver:
         bz_mont: Array,
         r_val: Array,
         s_val: Array,
-        neg_rs_val: Array,
-        *,
-        split: bool = False,
+        rs_val: Array,
     ) -> tuple[Array, Array, Array]:
-        """Run the proving computation (combined or split phase).
+        """Run the proving computation.
 
-        Args:
-            split: If True, run phase 1+2 and phase 3 as separate JIT
-                dispatches. This allows phase 1+2 (NTT + MSMs) to run on
-                GPU while phase 3 (EC assembly) runs on CPU.
+        Phase 1+2 (NTT + MSMs) runs on the default device (GPU if available).
+        Phase 3 (EC assembly) always runs on CPU because EC scalar multiply
+        fusions create kernels with ~68KB stack frames that cause
+        CUDA_ERROR_OUT_OF_MEMORY on GPU.
         """
         # Gnark-specific arrays: None for circom → dummy scalar placeholder
         # (never traced thanks to config.is_circom static branching)
@@ -167,73 +171,46 @@ class CompiledProver:
             else jnp.array(0, dtype=bn254_sf_mont)
         )
 
-        if split:
-            # Phase 1: NTT + h-polynomial on GPU (JIT).
-            h_scalars = _prove_ntt(
-                self.config,
-                az_mont,
-                bz_mont,
-                self.fwd_stage_twiddles,
-                self.inv_stage_twiddles,
-                self.inv_n,
-                self.shift_powers,
-                den,
-                inv_sp,
-            )
-            # Phase 2: MSMs on GPU (chunked to work around ICICLE bug
-            # where arrays > ~11M elements produce incorrect results).
-            l = self.config.num_public  # noqa: E741
-            private_start = l + 1 if self.config.is_circom else l
-            msm_1 = _chunked_msm_g1(z_std, self.pa1)
-            msm_2 = _chunked_msm_g1(z_std, self.pb1)
-            msm_3 = _chunked_msm_g2(z_std, self.pb2)
-            msm_4 = _chunked_msm_g1(z_std[private_start:], self.pc1)
-            msm_5 = _chunked_msm_g1(h_scalars, self.ph1)
-            # Phase 3 must run on CPU — EC scalar multiply generates .b256
-            # PTX instructions that ptxas cannot compile on GPU.
-            cpu = jax.devices("cpu")[0]
-            _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
-            with jax.default_device(cpu):
-                return _prove_phase3(
-                    _to_cpu(msm_1),
-                    _to_cpu(msm_2),
-                    _to_cpu(msm_3),
-                    _to_cpu(msm_4),
-                    _to_cpu(msm_5),
-                    _to_cpu(r_val),
-                    _to_cpu(s_val),
-                    _to_cpu(neg_rs_val),
-                    _to_cpu(self.alpha1),
-                    _to_cpu(self.beta1),
-                    _to_cpu(self.beta2),
-                    _to_cpu(self.delta_g1),
-                    _to_cpu(self.delta_g2),
-                )
-        return _prove_core(
+        # Phase 1: NTT + h-polynomial (JIT).
+        h_scalars = _prove_ntt(
             self.config,
-            z_std,
-            r_val,
-            s_val,
-            neg_rs_val,
             az_mont,
             bz_mont,
             self.fwd_stage_twiddles,
             self.inv_stage_twiddles,
             self.inv_n,
             self.shift_powers,
-            self.pa1,
-            self.pb1,
-            self.pb2,
-            self.pc1,
-            self.ph1,
-            self.alpha1,
-            self.beta1,
-            self.beta2,
-            self.delta_g1,
-            self.delta_g2,
             den,
             inv_sp,
         )
+        # Phase 2: MSMs (chunked to work around ICICLE bug where arrays
+        # > ~11M elements produce incorrect results).
+        l = self.config.num_public  # noqa: E741
+        private_start = l + 1 if self.config.is_circom else l
+        msm_1 = _chunked_msm_g1(z_std, self.pa1)
+        msm_2 = _chunked_msm_g1(z_std, self.pb1)
+        msm_3 = _chunked_msm_g2(z_std, self.pb2)
+        msm_4 = _chunked_msm_g1(z_std[private_start:], self.pc1)
+        msm_5 = _chunked_msm_g1(h_scalars, self.ph1)
+        # Phase 3: EC assembly on CPU.
+        cpu = jax.devices("cpu")[0]
+        _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
+        with jax.default_device(cpu):
+            return _prove_phase3(
+                _to_cpu(msm_1),
+                _to_cpu(msm_2),
+                _to_cpu(msm_3),
+                _to_cpu(msm_4),
+                _to_cpu(msm_5),
+                _to_cpu(r_val),
+                _to_cpu(s_val),
+                _to_cpu(rs_val),
+                _to_cpu(self.alpha1),
+                _to_cpu(self.beta1),
+                _to_cpu(self.beta2),
+                _to_cpu(self.delta_g1),
+                _to_cpu(self.delta_g2),
+            )
 
     def prove_circom(
         self,
@@ -242,7 +219,7 @@ class CompiledProver:
         bz_mont: Array,
         *,
         no_zk: bool = False,
-        split: bool = False,
+        deterministic: bool = False,
     ) -> tuple[Groth16Proof, list[str]]:
         """Generate a Groth16 proof from a witness.
 
@@ -250,9 +227,9 @@ class CompiledProver:
             wtns: Parsed witness (WtnsV2).
             az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
             bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
-            no_zk: If True, use r=s=0 for a deterministic (non-ZK) proof.
-            split: If True, use separate JIT for phase 1+2 (GPU) and
-                phase 3 (CPU).
+            no_zk: If True, use r=s=0 (no ZK blinding, eliminates EC muls).
+            deterministic: If True, use fixed non-zero r, s for reproducible
+                proofs that still exercise full ZK blinding computation.
 
         Returns:
             Tuple of (proof, public_signals).
@@ -261,14 +238,16 @@ class CompiledProver:
 
         if no_zk:
             r_int, s_int = 0, 0
+        elif deterministic:
+            r_int, s_int = _DETERMINISTIC_R, _DETERMINISTIC_S
         else:
             r_int = secrets.randbelow(BN254_FR_MODULUS)
             s_int = secrets.randbelow(BN254_FR_MODULUS)
 
         r_val = jnp.array(r_int, dtype=bn254_sf)
         s_val = jnp.array(s_int, dtype=bn254_sf)
-        neg_rs = -(bn254_sf(r_int) * bn254_sf(s_int))
-        neg_rs_val = jnp.array(neg_rs, dtype=bn254_sf)
+        rs = bn254_sf(r_int) * bn254_sf(s_int)
+        rs_val = jnp.array(rs, dtype=bn254_sf)
 
         pi_a, pi_b2, pi_c = self._run_prove(
             z_std,
@@ -276,8 +255,7 @@ class CompiledProver:
             bz_mont,
             r_val,
             s_val,
-            neg_rs_val,
-            split=split,
+            rs_val,
         )
 
         proof = Groth16Proof(pi_a=pi_a, pi_b=pi_b2, pi_c=pi_c)
@@ -292,7 +270,7 @@ class CompiledProver:
         bz_mont: Array,
         *,
         no_zk: bool = False,
-        split: bool = False,
+        deterministic: bool = False,
     ) -> tuple[Groth16Proof, list[str]]:
         """Generate a Groth16 proof from gnark solved witness + pre-computed Az/Bz.
 
@@ -301,9 +279,9 @@ class CompiledProver:
                 (raw Montgomery form from Go exporter), shape (num_wires,).
             az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
             bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
-            no_zk: If True, use r=s=0 for a deterministic (non-ZK) proof.
-            split: If True, use separate JIT for phase 1+2 (GPU) and
-                phase 3 (CPU).
+            no_zk: If True, use r=s=0 (no ZK blinding, eliminates EC muls).
+            deterministic: If True, use fixed non-zero r, s for reproducible
+                proofs that still exercise full ZK blinding computation.
 
         Returns:
             Tuple of (proof, public_signals).
@@ -317,14 +295,16 @@ class CompiledProver:
 
         if no_zk:
             r_int, s_int = 0, 0
+        elif deterministic:
+            r_int, s_int = _DETERMINISTIC_R, _DETERMINISTIC_S
         else:
             r_int = secrets.randbelow(BN254_FR_MODULUS)
             s_int = secrets.randbelow(BN254_FR_MODULUS)
 
         r_val = jnp.array(r_int, dtype=bn254_sf)
         s_val = jnp.array(s_int, dtype=bn254_sf)
-        neg_rs = -(bn254_sf(r_int) * bn254_sf(s_int))
-        neg_rs_val = jnp.array(neg_rs, dtype=bn254_sf)
+        rs = bn254_sf(r_int) * bn254_sf(s_int)
+        rs_val = jnp.array(rs, dtype=bn254_sf)
 
         pi_a, pi_b2, pi_c = self._run_prove(
             z_std,
@@ -332,8 +312,7 @@ class CompiledProver:
             bz_mont,
             r_val,
             s_val,
-            neg_rs_val,
-            split=split,
+            rs_val,
         )
 
         proof = Groth16Proof(pi_a=pi_a, pi_b=pi_b2, pi_c=pi_c)
@@ -578,7 +557,7 @@ def _prove_phase3(
     msm_5: Array,
     r_val: Array,
     s_val: Array,
-    neg_rs_val: Array,
+    rs_val: Array,
     # VK points (affine scalars)
     alpha1: Array,
     beta1: Array,
@@ -612,11 +591,11 @@ def _prove_phase3(
     s_delta2 = s_val * delta_g2
     s_pi_a = s_val * pi_a
     r_pi_b1 = r_val * pi_b1
-    neg_rs_delta1 = neg_rs_val * delta_g1
+    rs_delta1 = rs_val * delta_g1
 
     pi_a = pi_a + r_delta1
     pi_b2 = pi_b2 + s_delta2
-    pi_c = pi_c + s_pi_a + r_pi_b1 + neg_rs_delta1
+    pi_c = pi_c + s_pi_a + r_pi_b1 + rs_delta1
 
     # Convert to affine for output
     pi_a = lax.convert_element_type(pi_a, bn254_g1_affine)
@@ -627,82 +606,7 @@ def _prove_phase3(
 
 
 # ---------------------------------------------------------------------------
-# Combined _prove_core: Phase 1+2 → Phase 3 (for single-dispatch use)
-# ---------------------------------------------------------------------------
-
-
-@partial(jax.jit, static_argnums=(0,))
-def _prove_core(
-    config: ProveConfig,
-    z_std: Array,
-    r_val: Array,
-    s_val: Array,
-    neg_rs_val: Array,
-    az_mont: Array,
-    bz_mont: Array,
-    # NTT arrays (per-stage twiddles)
-    fwd_stage_tw: tuple[Array, ...],
-    inv_stage_tw: tuple[Array, ...],
-    inv_n: Array,
-    shift_powers: Array,
-    # Point arrays (affine)
-    pa1: Array,
-    pb1: Array,
-    pb2: Array,
-    pc1: Array,
-    ph1: Array,
-    # VK points (affine scalars)
-    alpha1: Array,
-    beta1: Array,
-    beta2: Array,
-    # Delta points (affine scalars)
-    delta_g1: Array,
-    delta_g2: Array,
-    # Gnark-specific (unused dummy for circom)
-    den: Array,
-    inv_shift_powers: Array,
-) -> tuple[Array, Array, Array]:
-    """Combined kernel: Phase 1+2 (NTT + MSMs) → Phase 3 (EC assembly).
-
-    Single JIT dispatch for CPU-only execution. For GPU/CPU split, use
-    _prove_phase12 and _prove_phase3 separately.
-    """
-    msm_1, msm_2, msm_3, msm_4, msm_5 = _prove_phase12(
-        config,
-        z_std,
-        az_mont,
-        bz_mont,
-        fwd_stage_tw,
-        inv_stage_tw,
-        inv_n,
-        shift_powers,
-        pa1,
-        pb1,
-        pb2,
-        pc1,
-        ph1,
-        den,
-        inv_shift_powers,
-    )
-    return _prove_phase3(
-        msm_1,
-        msm_2,
-        msm_3,
-        msm_4,
-        msm_5,
-        r_val,
-        s_val,
-        neg_rs_val,
-        alpha1,
-        beta1,
-        beta2,
-        delta_g1,
-        delta_g2,
-    )
-
-
-# ---------------------------------------------------------------------------
-# JIT-internal helpers (called during trace of _prove_core)
+# JIT-internal helpers (called during trace of _prove_ntt / _prove_phase12)
 # ---------------------------------------------------------------------------
 
 # ICICLE MSM produces incorrect results when GPU memory is insufficient
