@@ -12,6 +12,7 @@ requires-python = ">=3.9"
 dependencies = [
     "numpy>=2.3.5",
     "zk_dtypes>=0.0.2",
+    "zkbench>=0.1.0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
