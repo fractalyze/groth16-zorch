@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""End-to-end test: compile -> prove -> verify round-trip.
+"""End-to-end test: compile -> prove -> verify round-trip (circom).
 
 Uses the multiplier_3 circuit (3-input multiplier):
     z = [1, 60, 3, 4, 5, 12]
@@ -24,56 +24,17 @@ Uses the multiplier_3 circuit (3-input multiplier):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-import jax.numpy as jnp
 from absl.testing import absltest
-from zk_dtypes import bn254_sf_mont
 
 from rabbitsnark.circom.wtns import parse_wtns
 from rabbitsnark.circom.zkey import parse_zkey
 from rabbitsnark.groth16 import compile_circom
 from rabbitsnark.groth16.verifier import VerificationKey, verify
-
-if TYPE_CHECKING:
-    from jax import Array
-
-    from rabbitsnark.circom.wtns.wtns import WtnsV2
-    from rabbitsnark.circom.zkey.zkey import ZKeyV1
+from tests.circom.testutil import compute_az_bz
 
 
-def _compute_az_bz(
-    zkey: ZKeyV1,
-    wtns: WtnsV2,
-) -> tuple[Array, Array]:
-    """Compute A*z and B*z in Montgomery form from zkey coefficients.
-
-    Simple dense implementation for testing (not suitable for large circuits).
-    """
-    n = zkey.domain_size
-    m = zkey.header_groth.num_vars
-    modulus = zkey.header_groth.r.to_int()
-
-    a_dense = [[0] * m for _ in range(n)]
-    b_dense = [[0] * m for _ in range(n)]
-    for coeff in zkey.coefficients:
-        row, col, val = coeff.constraint, coeff.signal, coeff.value
-        if coeff.matrix == 0:
-            a_dense[row][col] = (a_dense[row][col] + val) % modulus
-        else:
-            b_dense[row][col] = (b_dense[row][col] + val) % modulus
-
-    z = [int(w) for w in wtns.witnesses]
-    az_vals = [sum(a_dense[i][j] * z[j] for j in range(m)) % modulus for i in range(n)]
-    bz_vals = [sum(b_dense[i][j] * z[j] for j in range(m)) % modulus for i in range(n)]
-
-    return (
-        jnp.array(az_vals, dtype=bn254_sf_mont),
-        jnp.array(bz_vals, dtype=bn254_sf_mont),
-    )
-
-
-class TestE2EProveVerify(absltest.TestCase):
+class TestCircomE2EProveVerify(absltest.TestCase):
     """End-to-end: compile_circom -> prove_circom -> verify."""
 
     def setUp(self):
@@ -81,7 +42,7 @@ class TestE2EProveVerify(absltest.TestCase):
         self.zkey = parse_zkey(test_data_dir / "multiplier_3.zkey")
         self.wtns = parse_wtns(test_data_dir / "multiplier_3.wtns")
         self.compiled = compile_circom(self.zkey)
-        self.az_mont, self.bz_mont = _compute_az_bz(self.zkey, self.wtns)
+        self.az_mont, self.bz_mont = compute_az_bz(self.zkey, self.wtns)
         self.vk = VerificationKey.from_zkey(self.zkey)
 
     def test_prove_verify_no_zk(self):
