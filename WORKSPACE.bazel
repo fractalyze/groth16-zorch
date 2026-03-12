@@ -15,11 +15,50 @@
 
 workspace(name = "rabbitsnark")
 
+# --- Phase 1: r1cs-solver + prime_ir ---
+
+load("//third_party/r1cs_solver:workspace.bzl", r1cs_solver = "repo")
+
+r1cs_solver()
+
+load(
+    "@r1cs_solver//bazel:r1cs_solver_deps.bzl",
+    r1cs_solver_cpp_deps = "cpp_deps",
+    r1cs_solver_llvm = "llvm",
+    r1cs_solver_prime_ir = "prime_ir",
+)
+
+r1cs_solver_prime_ir()
+
+load("@prime_ir//bazel:prime_ir_deps.bzl", "prime_ir_deps")
+
+prime_ir_deps()
+
+# --- Phase 2: zk_dtypes + its deps ---
+
 load("//third_party/zk_dtypes:workspace.bzl", zk_dtypes = "repo")
 
 zk_dtypes()
 
-# Initialize hermetic Python
+r1cs_solver_cpp_deps()
+
+# --- Phase 3: LLVM ---
+
+load(
+    "@prime_ir//third_party/llvm-project:workspace.bzl",
+    "LLVM_COMMIT",
+    "LLVM_PATCHES",
+    "LLVM_SHA256",
+)
+
+r1cs_solver_llvm(LLVM_COMMIT, LLVM_SHA256, LLVM_PATCHES)
+
+load("@llvm-raw//utils/bazel:configure.bzl", "llvm_configure")
+
+llvm_configure(name = "llvm-project")
+
+# --- Hermetic Python ---
+
 load("@zk_dtypes//third_party/py:python_init_rules.bzl", "python_init_rules")
 
 python_init_rules()

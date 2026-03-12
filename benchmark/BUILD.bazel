@@ -21,6 +21,7 @@ py_library(
         "__init__.py",
         "runner.py",
     ],
+    data = ["@r1cs_solver//solver:libr1cs_solver.so"],
     visibility = ["//visibility:public"],
     deps = [
         "//rabbitsnark:gnark",

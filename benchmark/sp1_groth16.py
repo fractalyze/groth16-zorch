@@ -176,9 +176,8 @@ def main():
     compiled = runner.compile(data)
     az_mont, bz_mont = runner.prepare_solutions(data)
 
-    witness_mont = data.witness_full
     measured_times = runner.run_prove_iterations(
-        compiled, witness_mont, az_mont, bz_mont
+        compiled, runner._witness_full, az_mont, bz_mont
     )
     print(
         f"\nPublic signals ({len(runner._last_public_signals)}): "

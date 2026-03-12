@@ -95,7 +95,7 @@ def _cmd_circom_verify(args: argparse.Namespace) -> None:
 def _cmd_gnark_prove(args: argparse.Namespace) -> None:
     from pathlib import Path
 
-    from rabbitsnark.gnark import load_gnark_export, load_solutions_mont
+    from rabbitsnark.gnark import load_gnark_export, load_solver_data, solve_and_compute
     from rabbitsnark.groth16 import compile_gnark
 
     export_dir = Path(args.export_dir)
@@ -111,13 +111,14 @@ def _cmd_gnark_prove(args: argparse.Namespace) -> None:
     print("Compiling proving key...")
     compiled = compile_gnark(data)
 
-    print("Preparing solution vectors (Az, Bz)...")
-    az_mont, bz_mont = load_solutions_mont(export_dir, data.domain_size)
+    print("Solving witness + computing Az/Bz via native solver...")
+    solver = load_solver_data(export_dir)
+    witness_full, az_mont, bz_mont = solve_and_compute(data.witness_full, solver)
 
     print("Generating proof...")
     t0 = time.time()
     proof, public_signals = compiled.prove_gnark(
-        data.witness_full,
+        witness_full,
         az_mont,
         bz_mont,
         no_zk=args.no_zk,
