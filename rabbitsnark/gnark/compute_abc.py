@@ -418,12 +418,10 @@ def load_solver_data(export_dir: str | Path) -> SolverData:
     level_sizes = level_sizes_u32.astype(np.int32)
     level_cids = level_order_u32.astype(np.int32)
 
-    # Build level_offsets (cumulative prefix sum of level_sizes)
+    # Build level_offsets (exclusive prefix sum of level_sizes)
     level_offsets = np.zeros(num_levels, dtype=np.int32)
-    acc = 0
-    for i in range(num_levels):
-        level_offsets[i] = acc
-        acc += level_sizes[i]
+    if num_levels > 1:
+        level_offsets[1:] = np.cumsum(level_sizes[:-1])
 
     (
         hint_ids,
@@ -505,13 +503,8 @@ def solve_witness(
     witness_buf[: n_input * FIELD_ELEM_SIZE] = input_bytes[: n_input * FIELD_ELEM_SIZE]
 
     # Compute max_hints_per_level for scratch buffer sizing
-    max_hints_per_level = 0
-    for i in range(solver.num_levels):
-        count = int(solver.hint_level_offsets[i + 1]) - int(
-            solver.hint_level_offsets[i]
-        )
-        if count > max_hints_per_level:
-            max_hints_per_level = count
+    counts = solver.hint_level_offsets[1:] - solver.hint_level_offsets[:-1]
+    max_hints_per_level = int(np.max(counts, initial=0))
 
     scratch_size = max(max_hints_per_level * solver.max_hint_inputs, 1)
     hint_scratch = np.zeros(scratch_size * FIELD_ELEM_SIZE, dtype=np.uint8)
