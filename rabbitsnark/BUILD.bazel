@@ -64,6 +64,7 @@ py_library(
     srcs = [
         "gnark/__init__.py",
         "gnark/loader.py",
+        "gnark/solutions.py",
         "gnark/types.py",
     ],
     deps = [
@@ -110,6 +111,7 @@ py_library(
     deps = [
         ":circom_wtns",
         ":circom_zkey",
+        ":gnark",
         ":groth16",
     ],
 )
