@@ -92,6 +92,12 @@ BN254_FR_MODULUS = (
 # gnark uses the Fr multiplicative generator (= 5) as coset shift,
 # NOT omega_{2n} which circom/snarkjs uses.
 GNARK_COSET_GEN = 5
+
+# Fixed non-zero blinding factors for deterministic benchmarking.
+# Arbitrary values; chosen so that ZK blinding EC scalar multiplies execute
+# with realistic non-zero operands (unlike no_zk where r=s=0 skips work).
+_DETERMINISTIC_R = 7
+_DETERMINISTIC_S = 11
 # gnark uses 5^((p - 1) / 2²⁸) as the primitive 2²⁸-th root of unity.
 # BN254_FR_ROOT_OF_UNITY (from the NTT module) uses generator 7 instead of 5,
 # giving a different primitive root.  The prover MUST use the same root as the
@@ -242,6 +248,7 @@ class CompiledProver:
         bz_mont: Array,
         *,
         no_zk: bool = False,
+        deterministic: bool = False,
         split: bool = False,
     ) -> tuple[Groth16Proof, list[str]]:
         """Generate a Groth16 proof from a witness.
@@ -250,7 +257,9 @@ class CompiledProver:
             wtns: Parsed witness (WtnsV2).
             az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
             bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
-            no_zk: If True, use r=s=0 for a deterministic (non-ZK) proof.
+            no_zk: If True, use r=s=0 (no ZK blinding, eliminates EC muls).
+            deterministic: If True, use fixed non-zero r, s for reproducible
+                proofs that still exercise full ZK blinding computation.
             split: If True, use separate JIT for phase 1+2 (GPU) and
                 phase 3 (CPU).
 
@@ -261,6 +270,8 @@ class CompiledProver:
 
         if no_zk:
             r_int, s_int = 0, 0
+        elif deterministic:
+            r_int, s_int = _DETERMINISTIC_R, _DETERMINISTIC_S
         else:
             r_int = secrets.randbelow(BN254_FR_MODULUS)
             s_int = secrets.randbelow(BN254_FR_MODULUS)
@@ -292,6 +303,7 @@ class CompiledProver:
         bz_mont: Array,
         *,
         no_zk: bool = False,
+        deterministic: bool = False,
         split: bool = False,
     ) -> tuple[Groth16Proof, list[str]]:
         """Generate a Groth16 proof from gnark solved witness + pre-computed Az/Bz.
@@ -301,7 +313,9 @@ class CompiledProver:
                 (raw Montgomery form from Go exporter), shape (num_wires,).
             az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
             bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
-            no_zk: If True, use r=s=0 for a deterministic (non-ZK) proof.
+            no_zk: If True, use r=s=0 (no ZK blinding, eliminates EC muls).
+            deterministic: If True, use fixed non-zero r, s for reproducible
+                proofs that still exercise full ZK blinding computation.
             split: If True, use separate JIT for phase 1+2 (GPU) and
                 phase 3 (CPU).
 
@@ -317,6 +331,8 @@ class CompiledProver:
 
         if no_zk:
             r_int, s_int = 0, 0
+        elif deterministic:
+            r_int, s_int = _DETERMINISTIC_R, _DETERMINISTIC_S
         else:
             r_int = secrets.randbelow(BN254_FR_MODULUS)
             s_int = secrets.randbelow(BN254_FR_MODULUS)
