@@ -41,6 +41,7 @@ from .proof import Groth16Proof
 
 if TYPE_CHECKING:
     from rabbitsnark.circom.zkey.zkey import ZKeyV1
+    from rabbitsnark.gnark.types import GnarkProvingData
 
 BN254_FQ_MODULUS = (
     21888242871839275222246405745257275088696311157297823662689037894645226208583
@@ -81,6 +82,17 @@ class VerificationKey:
         """Load from a snarkjs verification_key.json file."""
         with open(path) as f:
             return cls.from_json(json.load(f))
+
+    @classmethod
+    def from_gnark(cls, data: GnarkProvingData) -> VerificationKey:
+        """Extract verification key from gnark export data."""
+        return cls(
+            alpha_g1=G1Point.from_ints(*data.vk_alpha_g1),
+            beta_g2=G2Point.from_ints(*data.vk_beta_g2),
+            gamma_g2=G2Point.from_ints(*data.vk_gamma_g2),
+            delta_g2=G2Point.from_ints(*data.pk_delta_g2),
+            ic=[G1Point.from_ints(*p) for p in data.vk_ic],
+        )
 
     @classmethod
     def from_zkey(cls, zkey: ZKeyV1) -> VerificationKey:

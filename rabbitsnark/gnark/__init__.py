@@ -16,9 +16,11 @@
 """Gnark Groth16 support: load exported circuit data and prove via JAX."""
 
 from .loader import load_gnark_export
+from .solutions import load_solutions_mont
 from .types import GnarkProvingData
 
 __all__ = [
     "GnarkProvingData",
     "load_gnark_export",
+    "load_solutions_mont",
 ]
