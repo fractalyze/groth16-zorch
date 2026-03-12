@@ -1,0 +1,128 @@
+# Copyright 2026 The RabbitSNARK Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "circom_base",
+    srcs = [
+        "circom/__init__.py",
+        "circom/base/__init__.py",
+        "circom/base/buffer.py",
+        "circom/base/modulus.py",
+        "circom/base/sections.py",
+    ],
+    deps = [
+        "@pypi//numpy",
+    ],
+)
+
+py_library(
+    name = "circom_wtns",
+    srcs = [
+        "circom/wtns/__init__.py",
+        "circom/wtns/wtns.py",
+    ],
+    deps = [
+        ":circom_base",
+        "@pypi//numpy",
+        "@pypi//zk_dtypes",
+    ],
+)
+
+py_library(
+    name = "circom_zkey",
+    srcs = [
+        "circom/zkey/__init__.py",
+        "circom/zkey/coefficient.py",
+        "circom/zkey/verifying_key.py",
+        "circom/zkey/zkey.py",
+    ],
+    deps = [
+        ":circom_base",
+        "@pypi//numpy",
+        "@pypi//zk_dtypes",
+    ],
+)
+
+py_library(
+    name = "gnark",
+    srcs = [
+        "gnark/__init__.py",
+        "gnark/loader.py",
+        "gnark/types.py",
+    ],
+    deps = [
+        "@pypi//jax",
+        "@pypi//numpy",
+        "@pypi//zk_dtypes",
+    ],
+)
+
+py_library(
+    name = "ntt",
+    srcs = [
+        "ntt/__init__.py",
+        "ntt/ntt.py",
+    ],
+    deps = [
+        "@pypi//jax",
+        "@pypi//numpy",
+        "@pypi//zk_dtypes",
+    ],
+)
+
+py_library(
+    name = "groth16",
+    srcs = [
+        "groth16/__init__.py",
+        "groth16/proof.py",
+        "groth16/prover.py",
+        "groth16/verifier.py",
+    ],
+    deps = [
+        ":circom_zkey",
+        ":gnark",
+        ":ntt",
+        "@pypi//jax",
+        "@pypi//numpy",
+        "@pypi//zk_dtypes",
+    ],
+)
+
+py_library(
+    name = "cli",
+    srcs = ["cli.py"],
+    deps = [
+        ":circom_wtns",
+        ":circom_zkey",
+        ":groth16",
+    ],
+)
+
+py_library(
+    name = "rabbitsnark",
+    srcs = ["__init__.py"],
+    deps = [
+        ":circom_wtns",
+        ":circom_zkey",
+        ":cli",
+        ":gnark",
+        ":groth16",
+        ":ntt",
+    ],
+)
