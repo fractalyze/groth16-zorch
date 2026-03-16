@@ -497,10 +497,12 @@ def solve_witness(
     csr = solver.csr
     n_input = solver.num_public + solver.num_secret
 
-    # Build witness buffer: zero-init, then copy inputs
+    # Build witness buffer: copy all provided wire values (public+secret at
+    # minimum; full witness if available), then let solver fill in the rest.
     witness_buf = np.zeros(solver.num_wires * FIELD_ELEM_SIZE, dtype=np.uint8)
     input_bytes = witness_inputs.view(np.uint8).ravel()
-    witness_buf[: n_input * FIELD_ELEM_SIZE] = input_bytes[: n_input * FIELD_ELEM_SIZE]
+    n_copy = min(len(witness_inputs), solver.num_wires)
+    witness_buf[: n_copy * FIELD_ELEM_SIZE] = input_bytes[: n_copy * FIELD_ELEM_SIZE]
 
     # Compute max_hints_per_level for scratch buffer sizing
     counts = solver.hint_level_offsets[1:] - solver.hint_level_offsets[:-1]
