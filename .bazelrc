@@ -13,14 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Gnark Groth16 support: load exported circuit data and prove via JAX."""
+build -c opt
 
-from .loader import load_gnark_export
-from .solutions import load_solutions_mont
-from .types import GnarkProvingData
+# Make Bazel print out all options from rc files.
+build --announce_rc
 
-__all__ = [
-    "GnarkProvingData",
-    "load_gnark_export",
-    "load_solutions_mont",
-]
+common --noenable_bzlmod
+
+
+# Load rc file with user-specific options.
+try-import %workspace%/.bazelrc.user

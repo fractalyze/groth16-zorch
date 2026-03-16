@@ -1,0 +1,6 @@
+absl-py
+jax==0.0.4
+jaxlib==0.0.4
+numpy
+zk-dtypes
+zkbench

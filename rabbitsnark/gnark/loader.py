@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from zk_dtypes import bn254_g1_affine, bn254_g2_affine, bn254_sf_mont
+from zk_dtypes import bn254_sf_mont
 
 from .types import GnarkProvingData, HintData, HintInstruction
 
@@ -188,26 +188,6 @@ def _read_g1_points(path: Path) -> list[tuple[int, int]]:
     count = raw.size // G1_POINT_SIZE
     ints = _bytes_to_field_ints(raw, count * 2, FIELD_ELEM_SIZE)
     return [(int(ints[i * 2]), int(ints[i * 2 + 1])) for i in range(count)]
-
-
-def _read_g1_points_native(path: Path) -> np.ndarray:
-    """Read G1 affine points as zero-copy numpy array of bn254_g1_affine.
-
-    The binary format is 64 bytes per point (32B X + 32B Y, LE), which
-    matches the zk_dtypes bn254_g1_affine memory layout exactly.
-    """
-    raw = np.fromfile(str(path), dtype=np.uint8)
-    return raw.view(np.dtype(bn254_g1_affine))
-
-
-def _read_g2_points_native(path: Path) -> np.ndarray:
-    """Read G2 affine points as zero-copy numpy array of bn254_g2_affine.
-
-    The binary format is 128 bytes per point (4 × 32B, LE), which
-    matches the zk_dtypes bn254_g2_affine memory layout exactly.
-    """
-    raw = np.fromfile(str(path), dtype=np.uint8)
-    return raw.view(np.dtype(bn254_g2_affine))
 
 
 def _read_g2_points(path: Path) -> list[tuple[tuple[int, int], tuple[int, int]]]:

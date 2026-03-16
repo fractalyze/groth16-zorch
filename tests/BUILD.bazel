@@ -13,14 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Gnark Groth16 support: load exported circuit data and prove via JAX."""
+load("@rules_python//python:defs.bzl", "py_test")
 
-from .loader import load_gnark_export
-from .solutions import load_solutions_mont
-from .types import GnarkProvingData
+py_test(
+    name = "ntt_test",
+    srcs = ["ntt_test.py"],
 
-__all__ = [
-    "GnarkProvingData",
-    "load_gnark_export",
-    "load_solutions_mont",
-]
+    deps = [
+        "//rabbitsnark:ntt",
+        "@pypi//absl_py",
+        "@pypi//jax",
+        "@pypi//numpy",
+        "@pypi//zk_dtypes",
+    ],
+)

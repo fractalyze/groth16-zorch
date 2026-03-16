@@ -41,6 +41,7 @@ from .proof import Groth16Proof
 
 if TYPE_CHECKING:
     from rabbitsnark.circom.zkey.zkey import ZKeyV1
+    from rabbitsnark.gnark.types import GnarkProvingData
 
 BN254_FQ_MODULUS = (
     21888242871839275222246405745257275088696311157297823662689037894645226208583
@@ -81,6 +82,17 @@ class VerificationKey:
         """Load from a snarkjs verification_key.json file."""
         with open(path) as f:
             return cls.from_json(json.load(f))
+
+    @classmethod
+    def from_gnark(cls, data: GnarkProvingData) -> VerificationKey:
+        """Extract verification key from gnark export data."""
+        return cls(
+            alpha_g1=G1Point.from_ints(*data.vk_alpha_g1),
+            beta_g2=G2Point.from_ints(*data.vk_beta_g2),
+            gamma_g2=G2Point.from_ints(*data.vk_gamma_g2),
+            delta_g2=G2Point.from_ints(*data.pk_delta_g2),
+            ic=[G1Point.from_ints(*p) for p in data.vk_ic],
+        )
 
     @classmethod
     def from_zkey(cls, zkey: ZKeyV1) -> VerificationKey:
@@ -144,12 +156,6 @@ def verify(
         [bn254_g1_affine((pt.x, pt.y)) for pt in vk.ic],
         dtype=bn254_g1_affine,
     )
-    vk_x_affine = lax.msm(msm_scalars, msm_points)
-
-    # Extract vk_x coordinates from JAX result
-    vk_x_np = np.array(vk_x_affine).item()
-    vk_x_coords = vk_x_np.raw
-    vk_x_x, vk_x_y = int(vk_x_coords[0]), int(vk_x_coords[1])
 
     # Negate pi_a: (x, p - y)
     neg_pi_a_x = pi_a.x
@@ -157,15 +163,12 @@ def verify(
 
     # Build G1 and G2 arrays for pairing check:
     # e(-A, B) * e(alpha, beta) * e(vk_x, gamma) * e(C, delta) = 1
-    g1_points = jnp.array(
-        [
-            bn254_g1_affine((neg_pi_a_x, neg_pi_a_y)),
-            bn254_g1_affine((vk.alpha_g1.x, vk.alpha_g1.y)),
-            bn254_g1_affine((vk_x_x, vk_x_y)),
-            bn254_g1_affine((pi_c.x, pi_c.y)),
-        ],
-        dtype=bn254_g1_affine,
-    )
+    g1_points_data = [
+        bn254_g1_affine((neg_pi_a_x, neg_pi_a_y)),
+        bn254_g1_affine((vk.alpha_g1.x, vk.alpha_g1.y)),
+        None,  # placeholder for vk_x
+        bn254_g1_affine((pi_c.x, pi_c.y)),
+    ]
     g2_points = jnp.array(
         [
             bn254_g2_affine((pi_b.x, pi_b.y)),
@@ -176,9 +179,20 @@ def verify(
         dtype=bn254_g2_affine,
     )
 
-    # pairing_check only has CPU legalization — force CPU device.
+    # All verification ops run on CPU (pairing_check only has CPU
+    # legalization, and lax.msm works on both CPU and GPU).
     cpu = jax.devices("cpu")[0]
     with jax.default_device(cpu):
+        vk_x_affine = lax.msm(msm_scalars, msm_points)
+
+        # Extract vk_x coordinates from JAX result
+        vk_x_np = np.array(vk_x_affine).item()
+        vk_x_coords = vk_x_np.raw
+        vk_x_x, vk_x_y = int(vk_x_coords[0]), int(vk_x_coords[1])
+
+        g1_points_data[2] = bn254_g1_affine((vk_x_x, vk_x_y))
+        g1_points = jnp.array(g1_points_data, dtype=bn254_g1_affine)
+
         result = lax.pairing_check(g1_points, g2_points)
     return bool(result)
 
