@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import statistics
 from pathlib import Path
 
@@ -43,6 +44,7 @@ def _write_zkbench_report(
     verified: bool,
     num_constraints: int,
     circuit: str = "sp1",
+    output: str = "benchmark_results.json",
 ):
     """Write benchmark_results.json in zkbench schema."""
     from zkbench.schema import (
@@ -110,9 +112,9 @@ def _write_zkbench_report(
         latency=MetricValue(value=round(load_ms + to_ms(median), 2), unit="ms"),
     )
 
-    with open("benchmark_results.json", "w") as f:
+    with open(output, "w") as f:
         f.write(report.to_json())
-    print("\nWrote benchmark_results.json")
+    print(f"\nWrote {output}")
 
 
 def main():
@@ -160,6 +162,12 @@ def main():
         type=str,
         default="sp1",
         help="Circuit name for benchmark naming (default: sp1)",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="benchmark_results.json",
+        help="Path to write zkbench JSON (default: benchmark_results.json)",
     )
     args = parser.parse_args()
 
@@ -226,6 +234,7 @@ def main():
             verified=verified,
             num_constraints=data.num_constraints,
             circuit=args.circuit,
+            output=args.output,
         )
 
 
