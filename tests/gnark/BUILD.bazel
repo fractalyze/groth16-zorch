@@ -35,10 +35,10 @@ py_test(
 py_test(
     name = "groth16_verify_test",
     srcs = ["groth16_verify_test.py"],
+    data = [":testdata"],
     # TODO(b/369): Remove manual tag when jaxlib 0.0.5 is released.
     # Requires lax.msm (CPU) and lax.pairing_check (CPU) from jaxlib >= 0.0.5.
     tags = ["manual"],
-    data = [":testdata"],
     deps = [
         "//rabbitsnark:gnark",
         "//rabbitsnark:groth16",
@@ -51,10 +51,13 @@ py_test(
 py_test(
     name = "e2e_test",
     srcs = ["e2e_test.py"],
+    data = [
+        ":testdata",
+        "@r1cs_solver//solver:libr1cs_solver.so",
+    ],
     # TODO(b/369): Remove manual tag when jaxlib 0.0.5 is released.
     # Requires lax.msm (CPU) and lax.pairing_check (CPU) from jaxlib >= 0.0.5.
     tags = ["manual"],
-    data = [":testdata"],
     deps = [
         "//rabbitsnark:gnark",
         "//rabbitsnark:groth16",

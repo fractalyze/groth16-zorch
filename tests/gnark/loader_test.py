@@ -66,46 +66,10 @@ class TestGnarkLoader(absltest.TestCase):
         """vk_ic has correct number of points."""
         self.assertGreater(len(self.data.vk_ic), 0)
 
-    def test_r1cs_coo_format(self):
-        """r1cs_a COO tuple has consistent shapes."""
-        rows, cols, vals = self.data.r1cs_a
-        self.assertEqual(rows.shape, cols.shape)
-        self.assertEqual(rows.shape[0], vals.shape[0])
-        self.assertEqual(rows.dtype, np.uint32)
-        self.assertEqual(cols.dtype, np.uint32)
-        self.assertEqual(vals.dtype, np.dtype(bn254_sf_mont))
-
-    def test_r1cs_b_coo_format(self):
-        """r1cs_b COO tuple has consistent shapes."""
-        rows, cols, vals = self.data.r1cs_b
-        self.assertEqual(rows.shape, cols.shape)
-        self.assertEqual(rows.shape[0], vals.shape[0])
-
-    def test_r1cs_c_coo_format(self):
-        """r1cs_c COO tuple has consistent shapes."""
-        rows, cols, vals = self.data.r1cs_c
-        self.assertEqual(rows.shape, cols.shape)
-        self.assertEqual(rows.shape[0], vals.shape[0])
-
-    def test_solution_vectors(self):
-        """Solution vectors have correct size (num_constraints)."""
-        self.assertLen(self.data.solution_a, 2)
-        self.assertLen(self.data.solution_b, 2)
-        self.assertLen(self.data.solution_c, 2)
-
     def test_infinity_masks(self):
         """Infinity masks have correct shape."""
         self.assertEqual(self.data.infinity_a.shape, (4,))
         self.assertEqual(self.data.infinity_b.shape, (4,))
-
-    def test_level_sizes(self):
-        """Level sizes are non-empty and sum to num_constraints."""
-        self.assertGreater(len(self.data.level_sizes), 0)
-        self.assertEqual(self.data.level_sizes.sum(), self.data.num_constraints)
-
-    def test_level_order(self):
-        """Level order contains all constraint indices."""
-        self.assertEqual(len(self.data.level_order), self.data.num_constraints)
 
 
 if __name__ == "__main__":

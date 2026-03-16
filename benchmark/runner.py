@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING
 import jax
 
 from rabbitsnark.gnark.loader import load_gnark_export
-from rabbitsnark.gnark.solutions import load_solutions_mont
 from rabbitsnark.groth16.prover import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
 
@@ -53,10 +52,13 @@ class GnarkBenchmarkRunner:
         self.config = config
 
     def load(self) -> GnarkProvingData:
-        """Load gnark export data from the export directory."""
+        """Load gnark export data and solver data from the export directory."""
+        from rabbitsnark.gnark.compute_abc import load_solver_data
+
         print(f"Loading gnark export from {self.export_dir}")
         t0 = time.perf_counter()
         data = load_gnark_export(self.export_dir)
+        self.solver = load_solver_data(self.export_dir)
         self.t_load = time.perf_counter() - t0
         print(
             f"Load: {self.t_load:.1f}s  "
@@ -75,14 +77,19 @@ class GnarkBenchmarkRunner:
         return compiled
 
     def prepare_solutions(self, data: GnarkProvingData) -> tuple[jax.Array, jax.Array]:
-        """Load pre-computed solution vectors as padded Montgomery-form arrays.
+        """Solve witness + compute Az/Bz via native solver.
 
-        Uses raw binary files from the export directory to avoid double
-        Montgomery conversion.
+        Uses the solver data loaded during ``load()`` and the witness from
+        the proving data.
         """
-        print("\nPreparing solution vectors (Az, Bz)...")
+        from rabbitsnark.gnark.compute_abc import solve_and_compute
+
+        print("\nSolving witness + computing Az/Bz via native solver...")
         t0 = time.perf_counter()
-        az_mont, bz_mont = load_solutions_mont(self.export_dir, data.domain_size)
+        self._witness_full, az_mont, bz_mont = solve_and_compute(
+            data.witness_full,
+            self.solver,
+        )
         self.t_prep = time.perf_counter() - t0
         print(f"Solution prep: {self.t_prep:.1f}s")
         return az_mont, bz_mont

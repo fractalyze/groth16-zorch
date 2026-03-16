@@ -25,27 +25,29 @@ from pathlib import Path
 
 from absl.testing import absltest
 
-from rabbitsnark.gnark import load_gnark_export, load_solutions_mont
+from rabbitsnark.gnark import load_gnark_export, load_solver_data, solve_and_compute
 from rabbitsnark.groth16 import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
 
 
 class TestGnarkE2EProveVerify(absltest.TestCase):
-    """End-to-end: load gnark export -> compile -> prove -> verify."""
+    """End-to-end: load gnark export -> solve -> prove -> verify."""
 
     def setUp(self):
         self.data_dir = Path(__file__).parent / "data" / "tiny_multiply"
         self.data = load_gnark_export(self.data_dir)
         self.compiled = compile_gnark(self.data)
-        self.az_mont, self.bz_mont = load_solutions_mont(
-            self.data_dir, self.data.domain_size
+        solver = load_solver_data(self.data_dir)
+        self.witness_full, self.az_mont, self.bz_mont = solve_and_compute(
+            self.data.witness_full,
+            solver,
         )
         self.vk = VerificationKey.from_gnark(self.data)
 
     def test_prove_verify_no_zk(self):
         """Deterministic proof (r=s=0) verifies correctly."""
         proof, public_signals = self.compiled.prove_gnark(
-            self.data.witness_full,
+            self.witness_full,
             self.az_mont,
             self.bz_mont,
             no_zk=True,
@@ -55,7 +57,7 @@ class TestGnarkE2EProveVerify(absltest.TestCase):
     def test_prove_verify_deterministic(self):
         """Deterministic proof (fixed non-zero r, s) verifies correctly."""
         proof, public_signals = self.compiled.prove_gnark(
-            self.data.witness_full,
+            self.witness_full,
             self.az_mont,
             self.bz_mont,
             deterministic=True,
@@ -65,7 +67,7 @@ class TestGnarkE2EProveVerify(absltest.TestCase):
     def test_prove_verify_with_zk(self):
         """Randomized ZK proof verifies correctly."""
         proof, public_signals = self.compiled.prove_gnark(
-            self.data.witness_full,
+            self.witness_full,
             self.az_mont,
             self.bz_mont,
         )
@@ -74,7 +76,7 @@ class TestGnarkE2EProveVerify(absltest.TestCase):
     def test_invalid_signal_rejects(self):
         """Public signal modification causes verification failure."""
         proof, public_signals = self.compiled.prove_gnark(
-            self.data.witness_full,
+            self.witness_full,
             self.az_mont,
             self.bz_mont,
             no_zk=True,

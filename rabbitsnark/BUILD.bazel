@@ -63,8 +63,8 @@ py_library(
     name = "gnark",
     srcs = [
         "gnark/__init__.py",
+        "gnark/compute_abc.py",
         "gnark/loader.py",
-        "gnark/solutions.py",
         "gnark/types.py",
     ],
     deps = [

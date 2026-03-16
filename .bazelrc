@@ -20,6 +20,9 @@ build --announce_rc
 
 common --noenable_bzlmod
 
+build --cxxopt=-std=c++17
+build --host_cxxopt=-std=c++17
+
 
 # Load rc file with user-specific options.
 try-import %workspace%/.bazelrc.user
