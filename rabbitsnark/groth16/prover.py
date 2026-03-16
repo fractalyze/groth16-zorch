@@ -623,15 +623,24 @@ def _prove_phase3(
     pi_b2 = _j2(beta2) + _j2(msm_3)
     pi_c = _j1(msm_4) + _j1(msm_5)
 
-    # ZK blinding via EC scalar multiply (returns jacobian already)
+    # ZK blinding (Groth16 §3.2): blind A and B₁ first, then compute C
+    # with blinded values.
+    #   A' = A + r*δ₁
+    #   B₁' = B₁ + s*δ₁
+    #   B₂' = B₂ + s*δ₂
+    #   C' = C + s*A' + r*B₁' - rs*δ₁
     r_delta1 = r_val * delta_g1
+    s_delta1 = s_val * delta_g1
     s_delta2 = s_val * delta_g2
-    s_pi_a = s_val * pi_a
-    r_pi_b1 = r_val * pi_b1
-    neg_rs_delta1 = neg_rs_val * delta_g1
 
-    pi_a = pi_a + r_delta1
-    pi_b2 = pi_b2 + s_delta2
+    pi_a = pi_a + r_delta1          # A' = A + r*δ₁
+    pi_b1 = pi_b1 + s_delta1        # B₁' = B₁ + s*δ₁
+    pi_b2 = pi_b2 + s_delta2        # B₂' = B₂ + s*δ₂
+
+    s_pi_a = s_val * pi_a           # s * A' (blinded)
+    r_pi_b1 = r_val * pi_b1         # r * B₁' (blinded)
+    neg_rs_delta1 = neg_rs_val * delta_g1  # -rs * δ₁
+
     pi_c = pi_c + s_pi_a + r_pi_b1 + neg_rs_delta1
 
     # Convert to affine for output
