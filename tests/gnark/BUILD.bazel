@@ -36,7 +36,6 @@ py_test(
     name = "groth16_verify_test",
     srcs = ["groth16_verify_test.py"],
     data = [":testdata"],
-
     deps = [
         "//rabbitsnark:gnark",
         "//rabbitsnark:groth16",
@@ -50,7 +49,6 @@ py_test(
     name = "e2e_test",
     srcs = ["e2e_test.py"],
     data = [":testdata"],
-
     deps = [
         "//rabbitsnark:gnark",
         "//rabbitsnark:groth16",

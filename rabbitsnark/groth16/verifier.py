@@ -156,12 +156,6 @@ def verify(
         [bn254_g1_affine((pt.x, pt.y)) for pt in vk.ic],
         dtype=bn254_g1_affine,
     )
-    vk_x_affine = lax.msm(msm_scalars, msm_points)
-
-    # Extract vk_x coordinates from JAX result
-    vk_x_np = np.array(vk_x_affine).item()
-    vk_x_coords = vk_x_np.raw
-    vk_x_x, vk_x_y = int(vk_x_coords[0]), int(vk_x_coords[1])
 
     # Negate pi_a: (x, p - y)
     neg_pi_a_x = pi_a.x
@@ -169,15 +163,12 @@ def verify(
 
     # Build G1 and G2 arrays for pairing check:
     # e(-A, B) * e(alpha, beta) * e(vk_x, gamma) * e(C, delta) = 1
-    g1_points = jnp.array(
-        [
-            bn254_g1_affine((neg_pi_a_x, neg_pi_a_y)),
-            bn254_g1_affine((vk.alpha_g1.x, vk.alpha_g1.y)),
-            bn254_g1_affine((vk_x_x, vk_x_y)),
-            bn254_g1_affine((pi_c.x, pi_c.y)),
-        ],
-        dtype=bn254_g1_affine,
-    )
+    g1_points_data = [
+        bn254_g1_affine((neg_pi_a_x, neg_pi_a_y)),
+        bn254_g1_affine((vk.alpha_g1.x, vk.alpha_g1.y)),
+        None,  # placeholder for vk_x
+        bn254_g1_affine((pi_c.x, pi_c.y)),
+    ]
     g2_points = jnp.array(
         [
             bn254_g2_affine((pi_b.x, pi_b.y)),
@@ -188,9 +179,20 @@ def verify(
         dtype=bn254_g2_affine,
     )
 
-    # pairing_check only has CPU legalization — force CPU device.
+    # All verification ops run on CPU (pairing_check only has CPU
+    # legalization, and lax.msm works on both CPU and GPU).
     cpu = jax.devices("cpu")[0]
     with jax.default_device(cpu):
+        vk_x_affine = lax.msm(msm_scalars, msm_points)
+
+        # Extract vk_x coordinates from JAX result
+        vk_x_np = np.array(vk_x_affine).item()
+        vk_x_coords = vk_x_np.raw
+        vk_x_x, vk_x_y = int(vk_x_coords[0]), int(vk_x_coords[1])
+
+        g1_points_data[2] = bn254_g1_affine((vk_x_x, vk_x_y))
+        g1_points = jnp.array(g1_points_data, dtype=bn254_g1_affine)
+
         result = lax.pairing_check(g1_points, g2_points)
     return bool(result)
 
