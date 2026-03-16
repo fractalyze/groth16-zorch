@@ -34,7 +34,7 @@ Architecture:
     |  |-- IFFT x 3 → Coset NTT x 3
     |  |-- Quotient: h = a * b - c on coset
     |  +-- h-polynomial → scalars for MSM
-    +-- Phase 2: 5x MSM via lax.msm (chunked on GPU)
+    +-- Phase 2: 5x MSM via lax.msm (GPU memory managed by MsmChunkSplit)
     +-- Phase 3: _prove_phase3(...)  <- JIT (CPU-only)
        |-- EC assembly + ZK blinding via scalar *
        +-- Convert to affine
@@ -176,15 +176,14 @@ class CompiledProver:
             den,
             inv_sp,
         )
-        # Phase 2: MSMs (chunked to work around ICICLE bug where arrays
-        # > ~11M elements produce incorrect results).
+        # Phase 2: MSMs (MsmChunkSplit in ZKX handles GPU memory management).
         l = self.config.num_public  # noqa: E741
         private_start = l + 1 if self.config.is_circom else l
-        msm_1 = _chunked_msm_g1(z_std, self.pa1)
-        msm_2 = _chunked_msm_g1(z_std, self.pb1)
-        msm_3 = _chunked_msm_g2(z_std, self.pb2)
-        msm_4 = _chunked_msm_g1(z_std[private_start:], self.pc1)
-        msm_5 = _chunked_msm_g1(h_scalars, self.ph1)
+        msm_1 = lax.msm(z_std, self.pa1)
+        msm_2 = lax.msm(z_std, self.pb1)
+        msm_3 = lax.msm(z_std, self.pb2)
+        msm_4 = lax.msm(z_std[private_start:], self.pc1)
+        msm_5 = lax.msm(h_scalars, self.ph1)
         # Phase 3: EC assembly on CPU.
         cpu = jax.devices("cpu")[0]
         _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
@@ -611,51 +610,6 @@ def _prove_phase3(
 # ---------------------------------------------------------------------------
 # JIT-internal helpers (called during trace of _prove_ntt / _prove_phase12)
 # ---------------------------------------------------------------------------
-
-# ICICLE MSM produces incorrect results when GPU memory is insufficient
-# for the optimal bucket window.  The threshold depends on total GPU memory
-# pressure (input arrays + ICICLE scratch space), so multiple sequential
-# MSMs fail at lower per-call sizes.  2M chunks are safe on RTX 5090.
-# On CPU, chunking is unnecessary (no ICICLE, no GPU memory pressure).
-_MSM_CHUNK = 2_000_000
-_USE_CHUNKED_MSM = jax.default_backend() != "cpu"
-
-
-def _chunked_msm_g1(scalars: Array, points: Array) -> Array:
-    """Multi-scalar multiplication on G1 with chunking on GPU."""
-    n = scalars.shape[0]
-    if not _USE_CHUNKED_MSM or n <= _MSM_CHUNK:
-        return lax.msm(scalars, points)
-    chunks = []
-    for offset in range(0, n, _MSM_CHUNK):
-        end = min(offset + _MSM_CHUNK, n)
-        chunks.append(lax.msm(scalars[offset:end], points[offset:end]))
-    cpu = jax.devices("cpu")[0]
-    _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
-    with jax.default_device(cpu):
-        acc = lax.convert_element_type(_to_cpu(chunks[0]), bn254_g1_jacobian)
-        for chunk in chunks[1:]:
-            acc = acc + lax.convert_element_type(_to_cpu(chunk), bn254_g1_jacobian)
-        return lax.convert_element_type(acc, bn254_g1_affine)
-
-
-def _chunked_msm_g2(scalars: Array, points: Array) -> Array:
-    """Multi-scalar multiplication on G2 with chunking on GPU."""
-    n = scalars.shape[0]
-    if not _USE_CHUNKED_MSM or n <= _MSM_CHUNK:
-        return lax.msm(scalars, points)
-    chunks = []
-    for offset in range(0, n, _MSM_CHUNK):
-        end = min(offset + _MSM_CHUNK, n)
-        chunks.append(lax.msm(scalars[offset:end], points[offset:end]))
-    cpu = jax.devices("cpu")[0]
-    _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
-    with jax.default_device(cpu):
-        acc = lax.convert_element_type(_to_cpu(chunks[0]), bn254_g2_jacobian)
-        for chunk in chunks[1:]:
-            acc = acc + lax.convert_element_type(_to_cpu(chunk), bn254_g2_jacobian)
-        return lax.convert_element_type(acc, bn254_g2_affine)
-
 
 def _build_shift_powers(shift: Array, log_n: int) -> Array:
     """Build coset shift powers [1, g, g², ..., g^(n-1)] via O(log n) doubling."""
