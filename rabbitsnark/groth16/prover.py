@@ -155,7 +155,7 @@ class CompiledProver:
         s_val: Array,
         neg_rs_val: Array,
         *,
-        split: bool = False,
+        split: bool = True,
     ) -> tuple[Array, Array, Array]:
         """Run the proving computation (combined or split phase).
 
@@ -175,7 +175,7 @@ class CompiledProver:
 
         if split:
             # Phase 1: NTT + h-polynomial on GPU (JIT).
-            h_scalars = _prove_ntt(
+            h_mont = _prove_ntt(
                 self.config,
                 az_mont,
                 bz_mont,
@@ -186,6 +186,9 @@ class CompiledProver:
                 den,
                 inv_sp,
             )
+            # Mont→standard conversion done outside NTT JIT to avoid
+            # .b256 ptxas errors from convert_element_type on GPU.
+            h_scalars = lax.convert_element_type(h_mont, bn254_sf)
             # Phase 2: MSMs on GPU (chunked to work around ICICLE bug
             # where arrays > ~11M elements produce incorrect results).
             l = self.config.num_public  # noqa: E741
@@ -198,7 +201,10 @@ class CompiledProver:
             # Phase 3 must run on CPU — EC scalar multiply generates .b256
             # PTX instructions that ptxas cannot compile on GPU.
             cpu = jax.devices("cpu")[0]
-            _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
+            if str(msm_1.devices().pop()) == "CpuDevice(id=0)":
+                _to_cpu = lambda x: x  # already on CPU
+            else:
+                _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
             with jax.default_device(cpu):
                 return _prove_phase3(
                     _to_cpu(msm_1),
@@ -249,7 +255,7 @@ class CompiledProver:
         *,
         no_zk: bool = False,
         deterministic: bool = False,
-        split: bool = False,
+        split: bool = True,
     ) -> tuple[Groth16Proof, list[str]]:
         """Generate a Groth16 proof from a witness.
 
@@ -304,7 +310,7 @@ class CompiledProver:
         *,
         no_zk: bool = False,
         deterministic: bool = False,
-        split: bool = False,
+        split: bool = True,
     ) -> tuple[Groth16Proof, list[str]]:
         """Generate a Groth16 proof from gnark solved witness + pre-computed Az/Bz.
 
@@ -478,13 +484,13 @@ def _prove_ntt(
     h_evals_mont = a_coset * b_coset - c_coset
 
     if config.is_circom:
-        return lax.convert_element_type(h_evals_mont, bn254_sf)
+        return h_evals_mont
     else:
         h_evals_mont = h_evals_mont * den
         h_poly = NTT.inverse_ntt(h_evals_mont, inv_n, log_n, *inv_stage_tw)
         h_coeffs = h_poly * inv_shift_powers
         h_coeffs = lax.bit_reverse(h_coeffs, dimensions=[0])
-        return lax.convert_element_type(h_coeffs[: n - 1], bn254_sf)
+        return h_coeffs[: n - 1]
 
 
 @partial(jax.jit, static_argnums=(0,))
@@ -633,12 +639,12 @@ def _prove_phase3(
     s_delta1 = s_val * delta_g1
     s_delta2 = s_val * delta_g2
 
-    pi_a = pi_a + r_delta1          # A' = A + r*δ₁
-    pi_b1 = pi_b1 + s_delta1        # B₁' = B₁ + s*δ₁
-    pi_b2 = pi_b2 + s_delta2        # B₂' = B₂ + s*δ₂
+    pi_a = pi_a + r_delta1  # A' = A + r*δ₁
+    pi_b1 = pi_b1 + s_delta1  # B₁' = B₁ + s*δ₁
+    pi_b2 = pi_b2 + s_delta2  # B₂' = B₂ + s*δ₂
 
-    s_pi_a = s_val * pi_a           # s * A' (blinded)
-    r_pi_b1 = r_val * pi_b1         # r * B₁' (blinded)
+    s_pi_a = s_val * pi_a  # s * A' (blinded)
+    r_pi_b1 = r_val * pi_b1  # r * B₁' (blinded)
     neg_rs_delta1 = neg_rs_val * delta_g1  # -rs * δ₁
 
     pi_c = pi_c + s_pi_a + r_pi_b1 + neg_rs_delta1
