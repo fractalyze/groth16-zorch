@@ -391,6 +391,109 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
     )
 
 
+def compile_gnark(data: GnarkProvingData) -> CompiledProver:
+    """Compile gnark exported proving data into a reusable prover.
+
+    Converts gnark's tuple-based point arrays into JAX affine arrays
+    suitable for ``lax.msm``.  No XYZZ conversion or window_bits needed.
+
+    Args:
+        data: Loaded gnark export data.
+
+    Returns:
+        Compiled prover ready for proof generation via ``prove_gnark()``.
+    """
+    num_public = data.num_public
+    domain_size = data.domain_size
+    log_n = int(math.log2(domain_size))
+
+    # NTT per-stage twiddle arrays.
+    # Must use gnark's root of unity (generator 5) to match the CRS evaluation
+    # domain — using a different primitive root gives wrong h-polynomial.
+    ntt = NTT(bn254_sf_mont, GNARK_FR_ROOT_OF_UNITY)
+    fwd_stage_twiddles, inv_stage_twiddles, inv_n = ntt.get_stage_twiddles(log_n)
+
+    # Coset shift powers: [1, g, g², ..., g^(n-1)]
+    # gnark uses Fr multiplicative generator (= 5) as coset shift,
+    # NOT omega_{2n} which circom/snarkjs uses.
+    coset_shift = jnp.array(
+        bn254_sf_mont(GNARK_COSET_GEN),
+        dtype=bn254_sf_mont,
+    )
+    shift_powers = _build_shift_powers(coset_shift, log_n)
+
+    # Inverse coset shift powers: [1, g⁻¹, g⁻², ..., g⁻⁽ⁿ⁻¹⁾]
+    coset_gen_inv = pow(GNARK_COSET_GEN, BN254_FR_MODULUS - 2, BN254_FR_MODULUS)
+    coset_shift_inv = jnp.array(
+        bn254_sf_mont(coset_gen_inv),
+        dtype=bn254_sf_mont,
+    )
+    inv_shift_powers = _build_shift_powers(coset_shift_inv, log_n)
+
+    # Vanishing polynomial denominator: den = 1 / (g^n - 1)
+    g_pow_n = pow(GNARK_COSET_GEN, domain_size, BN254_FR_MODULUS)
+    den_int = pow(g_pow_n - 1, BN254_FR_MODULUS - 2, BN254_FR_MODULUS)
+    den = jnp.array(bn254_sf_mont(den_int), dtype=bn254_sf_mont)
+
+    # Point arrays (affine — lax.msm takes affine directly)
+    pa1 = _g1_tuples_to_array(data.pk_a_g1)
+    pb1 = _g1_tuples_to_array(data.pk_b_g1)
+    pb2 = _g2_tuples_to_array(data.pk_b_g2)
+    pc1 = _g1_tuples_to_array(data.pk_k_g1)
+    ph1 = _g1_tuples_to_array(data.pk_z_g1)  # n-1 points (gnark)
+
+    # VK points (affine scalars)
+    alpha1 = jnp.array(
+        bn254_g1_affine(data.vk_alpha_g1),
+        dtype=bn254_g1_affine,
+    )
+    beta1 = jnp.array(
+        bn254_g1_affine(data.vk_beta_g1),
+        dtype=bn254_g1_affine,
+    )
+    beta2 = jnp.array(
+        bn254_g2_affine(data.vk_beta_g2),
+        dtype=bn254_g2_affine,
+    )
+
+    # Delta points (affine scalars)
+    delta_g1 = jnp.array(
+        bn254_g1_affine(data.pk_delta_g1),
+        dtype=bn254_g1_affine,
+    )
+    delta_g2 = jnp.array(
+        bn254_g2_affine(data.pk_delta_g2),
+        dtype=bn254_g2_affine,
+    )
+
+    config = ProveConfig(
+        log_n=log_n,
+        num_public=num_public,
+        is_circom=False,
+    )
+
+    return CompiledProver(
+        config=config,
+        fwd_stage_twiddles=fwd_stage_twiddles,
+        inv_stage_twiddles=inv_stage_twiddles,
+        inv_n=inv_n,
+        shift_powers=shift_powers,
+        pa1=pa1,
+        pb1=pb1,
+        pb2=pb2,
+        pc1=pc1,
+        ph1=ph1,
+        alpha1=alpha1,
+        beta1=beta1,
+        beta2=beta2,
+        delta_g1=delta_g1,
+        delta_g2=delta_g2,
+        den=den,
+        inv_shift_powers=inv_shift_powers,
+    )
+
+
+
 # ---------------------------------------------------------------------------
 # Phase 1+2 JIT: NTT + field arithmetic + MSMs (GPU-safe)
 # ---------------------------------------------------------------------------
@@ -594,108 +697,6 @@ def _g2_points_to_array(points: list[G2Point]) -> Array:
     return jnp.array(
         [bn254_g2_affine((p.x, p.y)) for p in points],
         dtype=bn254_g2_affine,
-    )
-
-
-def compile_gnark(data: GnarkProvingData) -> CompiledProver:
-    """Compile gnark exported proving data into a reusable prover.
-
-    Converts gnark's tuple-based point arrays into JAX affine arrays
-    suitable for ``lax.msm``.  No XYZZ conversion or window_bits needed.
-
-    Args:
-        data: Loaded gnark export data.
-
-    Returns:
-        Compiled prover ready for proof generation via ``prove_gnark()``.
-    """
-    num_public = data.num_public
-    domain_size = data.domain_size
-    log_n = int(math.log2(domain_size))
-
-    # NTT per-stage twiddle arrays.
-    # Must use gnark's root of unity (generator 5) to match the CRS evaluation
-    # domain — using a different primitive root gives wrong h-polynomial.
-    ntt = NTT(bn254_sf_mont, GNARK_FR_ROOT_OF_UNITY)
-    fwd_stage_twiddles, inv_stage_twiddles, inv_n = ntt.get_stage_twiddles(log_n)
-
-    # Coset shift powers: [1, g, g², ..., g^(n-1)]
-    # gnark uses Fr multiplicative generator (= 5) as coset shift,
-    # NOT omega_{2n} which circom/snarkjs uses.
-    coset_shift = jnp.array(
-        bn254_sf_mont(GNARK_COSET_GEN),
-        dtype=bn254_sf_mont,
-    )
-    shift_powers = _build_shift_powers(coset_shift, log_n)
-
-    # Inverse coset shift powers: [1, g⁻¹, g⁻², ..., g⁻⁽ⁿ⁻¹⁾]
-    coset_gen_inv = pow(GNARK_COSET_GEN, BN254_FR_MODULUS - 2, BN254_FR_MODULUS)
-    coset_shift_inv = jnp.array(
-        bn254_sf_mont(coset_gen_inv),
-        dtype=bn254_sf_mont,
-    )
-    inv_shift_powers = _build_shift_powers(coset_shift_inv, log_n)
-
-    # Vanishing polynomial denominator: den = 1 / (g^n - 1)
-    g_pow_n = pow(GNARK_COSET_GEN, domain_size, BN254_FR_MODULUS)
-    den_int = pow(g_pow_n - 1, BN254_FR_MODULUS - 2, BN254_FR_MODULUS)
-    den = jnp.array(bn254_sf_mont(den_int), dtype=bn254_sf_mont)
-
-    # Point arrays (affine — lax.msm takes affine directly)
-    pa1 = _g1_tuples_to_array(data.pk_a_g1)
-    pb1 = _g1_tuples_to_array(data.pk_b_g1)
-    pb2 = _g2_tuples_to_array(data.pk_b_g2)
-    pc1 = _g1_tuples_to_array(data.pk_k_g1)
-    ph1 = _g1_tuples_to_array(data.pk_z_g1)  # n-1 points (gnark)
-
-    # VK points (affine scalars)
-    alpha1 = jnp.array(
-        bn254_g1_affine(data.vk_alpha_g1),
-        dtype=bn254_g1_affine,
-    )
-    beta1 = jnp.array(
-        bn254_g1_affine(data.vk_beta_g1),
-        dtype=bn254_g1_affine,
-    )
-    beta2 = jnp.array(
-        bn254_g2_affine(data.vk_beta_g2),
-        dtype=bn254_g2_affine,
-    )
-
-    # Delta points (affine scalars)
-    delta_g1 = jnp.array(
-        bn254_g1_affine(data.pk_delta_g1),
-        dtype=bn254_g1_affine,
-    )
-    delta_g2 = jnp.array(
-        bn254_g2_affine(data.pk_delta_g2),
-        dtype=bn254_g2_affine,
-    )
-
-    config = ProveConfig(
-        log_n=log_n,
-        num_public=num_public,
-        is_circom=False,
-    )
-
-    return CompiledProver(
-        config=config,
-        fwd_stage_twiddles=fwd_stage_twiddles,
-        inv_stage_twiddles=inv_stage_twiddles,
-        inv_n=inv_n,
-        shift_powers=shift_powers,
-        pa1=pa1,
-        pb1=pb1,
-        pb2=pb2,
-        pc1=pc1,
-        ph1=ph1,
-        alpha1=alpha1,
-        beta1=beta1,
-        beta2=beta2,
-        delta_g1=delta_g1,
-        delta_g2=delta_g2,
-        den=den,
-        inv_shift_powers=inv_shift_powers,
     )
 
 
