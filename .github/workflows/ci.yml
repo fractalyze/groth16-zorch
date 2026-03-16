@@ -17,13 +17,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  test-cpu:
     runs-on: [self-hosted, rabbitsnark-py]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run tests
-        run: bazel --bazelrc=.bazelrc.ci test --config=ci //...
+      - name: Run CPU tests
+        run: bazel --bazelrc=.bazelrc.ci test --config=ci --test_tag_filters=-gpu //...
+
+  # TODO(b/369): Enable when GPU self-hosted runner is provisioned.
+  # test-gpu:
+  #   runs-on: [self-hosted, rabbitsnark-py, gpu]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Run GPU tests
+  #       run: bazel --bazelrc=.bazelrc.ci test --config=ci --test_tag_filters=gpu //...
 
   pre-commit-style:
     runs-on: [self-hosted, rabbitsnark-py]
