@@ -492,7 +492,6 @@ def compile_gnark(data: GnarkProvingData) -> CompiledProver:
     )
 
 
-
 # ---------------------------------------------------------------------------
 # Phase 1+2 JIT: NTT + field arithmetic + MSMs (GPU-safe)
 # ---------------------------------------------------------------------------
@@ -610,6 +609,7 @@ def _prove_phase3(
 # ---------------------------------------------------------------------------
 # JIT-internal helpers (called during trace of _prove_ntt / _prove_phase12)
 # ---------------------------------------------------------------------------
+
 
 def _build_shift_powers(shift: Array, log_n: int) -> Array:
     """Build coset shift powers [1, g, g², ..., g^(n-1)] via O(log n) doubling."""
