@@ -8,4 +8,4 @@ jobs:
   sync:
     uses: fractalyze/.github/.github/workflows/sync-project-fields.yml@main
     secrets:
-      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+      PROJECT_TRACKER_GH_PAT: ${{ secrets.PROJECT_TRACKER_GH_PAT }}
