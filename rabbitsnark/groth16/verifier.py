@@ -87,11 +87,11 @@ class VerificationKey:
     def from_gnark(cls, data: GnarkProvingData) -> VerificationKey:
         """Extract verification key from gnark export data."""
         return cls(
-            alpha_g1=G1Point.from_ints(*data.vk_alpha_g1),
-            beta_g2=G2Point.from_ints(*data.vk_beta_g2),
-            gamma_g2=G2Point.from_ints(*data.vk_gamma_g2),
-            delta_g2=G2Point.from_ints(*data.pk_delta_g2),
-            ic=[G1Point.from_ints(*p) for p in data.vk_ic],
+            alpha_g1=G1Point(data.vk_alpha_g1[0]),
+            beta_g2=G2Point(data.vk_beta_g2[0]),
+            gamma_g2=G2Point(data.vk_gamma_g2[0]),
+            delta_g2=G2Point(data.pk_delta_g2[0]),
+            ic=[G1Point(p) for p in data.vk_ic],
         )
 
     @classmethod
