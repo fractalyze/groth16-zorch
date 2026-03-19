@@ -36,7 +36,7 @@ prime_ir_deps()
 
 # --- Phase 2: zk_dtypes + its deps ---
 
-load("//third_party/zk_dtypes:workspace.bzl", zk_dtypes = "repo")
+load("@prime_ir//third_party/zk_dtypes:workspace.bzl", zk_dtypes = "repo")
 
 zk_dtypes()
 
