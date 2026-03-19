@@ -1,0 +1,11 @@
+name: Sync PR to Project
+
+on:
+  pull_request_target:
+    types: [opened, reopened, converted_to_draft, ready_for_review, closed]
+
+jobs:
+  sync:
+    uses: fractalyze/.github/.github/workflows/sync-project-fields.yml@main
+    secrets:
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
