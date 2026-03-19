@@ -45,7 +45,7 @@ jobs:
       - uses: fractalyze/benchmark-action@v2
         with:
           benchmark_cmd: |
-            bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
+            JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
                 --export_dir=/data/testdata/sp1-groth16/ \
                 --deterministic --circuit=sp1 \
                 --iterations=3 --warmup=1 \

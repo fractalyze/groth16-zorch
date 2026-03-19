@@ -434,36 +434,21 @@ def compile_gnark(data: GnarkProvingData) -> CompiledProver:
     den_int = pow(g_pow_n - 1, BN254_FR_MODULUS - 2, BN254_FR_MODULUS)
     den = jnp.array(bn254_sf_mont(den_int), dtype=bn254_sf_mont)
 
-    # Point arrays (affine — lax.msm takes affine directly)
-    pa1 = _g1_tuples_to_array(data.pk_a_g1)
-    pb1 = _g1_tuples_to_array(data.pk_b_g1)
-    pb2 = _g2_tuples_to_array(data.pk_b_g2)
-    pc1 = _g1_tuples_to_array(data.pk_k_g1)
-    ph1 = _g1_tuples_to_array(data.pk_z_g1)  # n-1 points (gnark)
+    # Point arrays (affine mont — data is already Montgomery form from loader)
+    pa1 = jnp.array(data.pk_a_g1)
+    pb1 = jnp.array(data.pk_b_g1)
+    pb2 = jnp.array(data.pk_b_g2)
+    pc1 = jnp.array(data.pk_k_g1)
+    ph1 = jnp.array(data.pk_z_g1)
 
-    # VK points (affine scalars)
-    alpha1 = jnp.array(
-        bn254_g1_affine(data.vk_alpha_g1),
-        dtype=bn254_g1_affine,
-    )
-    beta1 = jnp.array(
-        bn254_g1_affine(data.vk_beta_g1),
-        dtype=bn254_g1_affine,
-    )
-    beta2 = jnp.array(
-        bn254_g2_affine(data.vk_beta_g2),
-        dtype=bn254_g2_affine,
-    )
+    # VK points (affine mont scalars)
+    alpha1 = jnp.array(data.vk_alpha_g1[0])
+    beta1 = jnp.array(data.vk_beta_g1[0])
+    beta2 = jnp.array(data.vk_beta_g2[0])
 
-    # Delta points (affine scalars)
-    delta_g1 = jnp.array(
-        bn254_g1_affine(data.pk_delta_g1),
-        dtype=bn254_g1_affine,
-    )
-    delta_g2 = jnp.array(
-        bn254_g2_affine(data.pk_delta_g2),
-        dtype=bn254_g2_affine,
-    )
+    # Delta points (affine mont scalars)
+    delta_g1 = jnp.array(data.pk_delta_g1[0])
+    delta_g2 = jnp.array(data.pk_delta_g2[0])
 
     config = ProveConfig(
         log_n=log_n,
@@ -650,23 +635,5 @@ def _g2_points_to_array(points: list[G2Point]) -> Array:
     """Convert a list of G2Points to a JAX affine array."""
     return jnp.array(
         [bn254_g2_affine((p.x, p.y)) for p in points],
-        dtype=bn254_g2_affine,
-    )
-
-
-def _g1_tuples_to_array(points: list[tuple[int, int]]) -> Array:
-    """Convert a list of (x, y) tuples to a JAX G1 affine array."""
-    return jnp.array(
-        [bn254_g1_affine(p) for p in points],
-        dtype=bn254_g1_affine,
-    )
-
-
-def _g2_tuples_to_array(
-    points: list[tuple[tuple[int, int], tuple[int, int]]],
-) -> Array:
-    """Convert a list of ((x0,x1),(y0,y1)) tuples to a JAX G2 affine array."""
-    return jnp.array(
-        [bn254_g2_affine(p) for p in points],
         dtype=bn254_g2_affine,
     )

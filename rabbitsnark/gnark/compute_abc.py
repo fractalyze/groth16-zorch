@@ -85,6 +85,13 @@ _REF_PTR = ctypes.POINTER(_StridedMemRef1D)
 def _find_runfiles_lib() -> str | None:
     """Try to find libr1cs_solver.so in Bazel runfiles."""
     runfiles_dir = os.environ.get("RUNFILES_DIR")
+    if not runfiles_dir:
+        # Infer from __file__ (without resolve — runfiles are symlinks).
+        # Path: .../foo.runfiles/rabbitsnark/rabbitsnark/gnark/compute_abc.py
+        for parent in Path(__file__).absolute().parents:
+            if parent.name.endswith(".runfiles"):
+                runfiles_dir = str(parent)
+                break
     if runfiles_dir:
         candidate = os.path.join(runfiles_dir, _RUNFILES_LIB_PATH)
         if os.path.isfile(candidate):
@@ -376,7 +383,7 @@ def _parse_hints(path: Path) -> tuple[
         max_inputs = 1
 
     return (
-        np.array(hint_ids, dtype=np.int32),
+        np.array(hint_ids, dtype=np.uint32),
         np.array(output_starts, dtype=np.int32),
         np.array(num_outputs_list, dtype=np.int32),
         np.array(num_inputs_list, dtype=np.int32),

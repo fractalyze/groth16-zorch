@@ -42,23 +42,23 @@ class GnarkProvingData:
     # Witness (from Go solver)
     witness_full: np.ndarray  # (num_wires,) bn254_sf_mont
 
-    # PK points — G1: (x, y) tuples, G2: ((x0, x1), (y0, y1)) tuples
+    # PK points — numpy arrays with native ZK dtypes
     # All uncompacted (zeros at infinity positions)
-    pk_a_g1: list[tuple[int, int]]  # (num_wires,)
-    pk_b_g1: list[tuple[int, int]]  # (num_wires,)
-    pk_b_g2: list[tuple[tuple[int, int], tuple[int, int]]]  # (num_wires,)
-    pk_k_g1: list[tuple[int, int]]  # (num_k,) — private wires only
-    pk_z_g1: list[tuple[int, int]]  # (num_z,) — H polynomial
-    pk_delta_g1: tuple[int, int]
-    pk_delta_g2: tuple[tuple[int, int], tuple[int, int]]
+    pk_a_g1: np.ndarray  # (num_wires,) bn254_g1_affine
+    pk_b_g1: np.ndarray  # (num_wires,) bn254_g1_affine
+    pk_b_g2: np.ndarray  # (num_wires,) bn254_g2_affine
+    pk_k_g1: np.ndarray  # (num_k,) bn254_g1_affine
+    pk_z_g1: np.ndarray  # (num_z,) bn254_g1_affine
+    pk_delta_g1: np.ndarray  # (1,) bn254_g1_affine
+    pk_delta_g2: np.ndarray  # (1,) bn254_g2_affine
 
     # Infinity masks
     infinity_a: np.ndarray  # (num_wires,) bool
     infinity_b: np.ndarray  # (num_wires,) bool
 
-    # VK points
-    vk_alpha_g1: tuple[int, int]
-    vk_beta_g1: tuple[int, int]
-    vk_beta_g2: tuple[tuple[int, int], tuple[int, int]]
-    vk_gamma_g2: tuple[tuple[int, int], tuple[int, int]]
-    vk_ic: list[tuple[int, int]]  # (num_vk_ic,) — gnark vk.G1.K
+    # VK points — numpy arrays with native ZK dtypes
+    vk_alpha_g1: np.ndarray  # (1,) bn254_g1_affine
+    vk_beta_g1: np.ndarray  # (1,) bn254_g1_affine
+    vk_beta_g2: np.ndarray  # (1,) bn254_g2_affine
+    vk_gamma_g2: np.ndarray  # (1,) bn254_g2_affine
+    vk_ic: np.ndarray  # (num_vk_ic,) bn254_g1_affine

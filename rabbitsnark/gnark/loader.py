@@ -22,13 +22,22 @@ import time
 from pathlib import Path
 
 import numpy as np
-from zk_dtypes import bn254_sf_mont
+from zk_dtypes import (
+    bn254_g1_affine,
+    bn254_g1_affine_mont,
+    bn254_g2_affine,
+    bn254_g2_affine_mont,
+    bn254_sf_mont,
+)
 
 from .types import GnarkProvingData
 
 FIELD_ELEM_SIZE = 32  # bytes per BN254 scalar field element
 G1_POINT_SIZE = 64  # 2 × 32B (X, Y)
 G2_POINT_SIZE = 128  # 4 × 32B (X.A0, X.A1, Y.A0, Y.A1)
+
+_G1_DT = np.dtype(bn254_g1_affine_mont)
+_G2_DT = np.dtype(bn254_g2_affine_mont)
 
 
 def load_gnark_export(
@@ -61,23 +70,23 @@ def load_gnark_export(
     print(f"  witness_full: {time.perf_counter() - t:.1f}s")
 
     t = time.perf_counter()
-    pk_a_g1 = _read_g1_points(d / "pk_a_g1.bin")
-    pk_b_g1 = _read_g1_points(d / "pk_b_g1.bin")
-    pk_b_g2 = _read_g2_points(d / "pk_b_g2.bin")
-    pk_k_g1 = _read_g1_points(d / "pk_k_g1.bin")
-    pk_z_g1 = _read_g1_points(d / "pk_z_g1.bin")
-    pk_delta_g1 = _read_g1_points(d / "pk_delta_g1.bin")[0]
-    pk_delta_g2 = _read_g2_points(d / "pk_delta_g2.bin")[0]
+    pk_a_g1 = _read_g1_native(d / "pk_a_g1.bin")
+    pk_b_g1 = _read_g1_native(d / "pk_b_g1.bin")
+    pk_b_g2 = _read_g2_native(d / "pk_b_g2.bin")
+    pk_k_g1 = _read_g1_native(d / "pk_k_g1.bin")
+    pk_z_g1 = _read_g1_native(d / "pk_z_g1.bin")
+    pk_delta_g1 = _read_g1_native(d / "pk_delta_g1.bin")
+    pk_delta_g2 = _read_g2_native(d / "pk_delta_g2.bin")
     print(f"  PK points: {time.perf_counter() - t:.1f}s")
 
     infinity_a = np.fromfile(str(d / "infinity_a.bin"), dtype=np.uint8).astype(bool)
     infinity_b = np.fromfile(str(d / "infinity_b.bin"), dtype=np.uint8).astype(bool)
 
-    vk_alpha_g1 = _read_g1_points(d / "vk_alpha_g1.bin")[0]
-    vk_beta_g1 = _read_g1_points(d / "vk_beta_g1.bin")[0]
-    vk_beta_g2 = _read_g2_points(d / "vk_beta_g2.bin")[0]
-    vk_gamma_g2 = _read_g2_points(d / "vk_gamma_g2.bin")[0]
-    vk_ic = _read_g1_points(d / "vk_ic.bin")
+    vk_alpha_g1 = _read_g1_native(d / "vk_alpha_g1.bin")
+    vk_beta_g1 = _read_g1_native(d / "vk_beta_g1.bin")
+    vk_beta_g2 = _read_g2_native(d / "vk_beta_g2.bin")
+    vk_gamma_g2 = _read_g2_native(d / "vk_gamma_g2.bin")
+    vk_ic = _read_g1_native(d / "vk_ic.bin")
 
     return GnarkProvingData(
         num_wires=num_wires,
@@ -113,40 +122,20 @@ def _read_field_elements_native(path: Path, count: int) -> np.ndarray:
     return raw.view(np.dtype(bn254_sf_mont))
 
 
-def _read_g1_points(path: Path) -> list[tuple[int, int]]:
-    """Read G1 affine points (X, Y) as 32-byte LE integers."""
-    raw = np.fromfile(str(path), dtype=np.uint8)
-    count = raw.size // G1_POINT_SIZE
-    ints = _bytes_to_field_ints(raw, count * 2, FIELD_ELEM_SIZE)
-    return [(int(ints[i * 2]), int(ints[i * 2 + 1])) for i in range(count)]
+def _read_g1_native(path: Path) -> np.ndarray:
+    """Read G1 affine points as bn254_g1_affine numpy array.
 
-
-def _read_g2_points(path: Path) -> list[tuple[tuple[int, int], tuple[int, int]]]:
-    """Read G2 affine points as nested ((x0, x1), (y0, y1)) tuples."""
-    raw = np.fromfile(str(path), dtype=np.uint8)
-    count = raw.size // G2_POINT_SIZE
-    ints = _bytes_to_field_ints(raw, count * 4, FIELD_ELEM_SIZE)
-    return [
-        (
-            (int(ints[i * 4]), int(ints[i * 4 + 1])),
-            (int(ints[i * 4 + 2]), int(ints[i * 4 + 3])),
-        )
-        for i in range(count)
-    ]
-
-
-def _bytes_to_field_ints(raw: np.ndarray, count: int, elem_size: int) -> np.ndarray:
-    """Convert raw bytes to array of Python int objects via uint64 limbs.
-
-    Uses numpy vectorized object array ops for ~10x speedup over per-element
-    int.from_bytes.
+    Disk format is Montgomery form (same bytes); we view as non-mont
+    because the prover operates in non-mont EC point space.
     """
-    data = raw.reshape(count, elem_size)
-    n_limbs = elem_size // 8
-    limbs = np.ascontiguousarray(data).view(np.uint64).reshape(count, n_limbs)
+    raw = np.fromfile(str(path), dtype=np.uint8)
+    return raw.view(_G1_DT).view(np.dtype(bn254_g1_affine))
 
-    # Vectorized combine: numpy object arrays support arbitrary-precision int
-    result = limbs[:, 0].astype(object)
-    for j in range(1, n_limbs):
-        result = result | (limbs[:, j].astype(object) << (64 * j))
-    return result
+
+def _read_g2_native(path: Path) -> np.ndarray:
+    """Read G2 affine points as bn254_g2_affine numpy array.
+
+    Same byte reinterpretation as G1 — see _read_g1_native.
+    """
+    raw = np.fromfile(str(path), dtype=np.uint8)
+    return raw.view(_G2_DT).view(np.dtype(bn254_g2_affine))
