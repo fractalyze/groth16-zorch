@@ -264,8 +264,8 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
     log_n = int(math.log2(domain_size))
     vk = zkey.verifying_key
 
-    # Coset shift powers: [1, g, g², ..., g^(n-1)] where g = omega_{2n}
-    # omega_{2n} = generator^((p - 1) / (2n)) mod p
+    # Coset shift powers: [1, g, g², ..., g^(n - 1)] where g = ω₂ₙ
+    # ω₂ₙ = generator^((p - 1) / (2 * n)) mod p
     coset_shift_int = pow(
         CIRCOM_GENERATOR,
         (BN254_FR_MODULUS - 1) // (2 * domain_size),
