@@ -182,10 +182,10 @@ def main():
 
     data = runner.load()
     compiled = runner.compile(data)
-    az_mont, bz_mont = runner.prepare_solutions(data)
+    z_std, az_mont, bz_mont, public_signals = runner.prepare_solutions(data, compiled)
 
     measured_times = runner.run_prove_iterations(
-        compiled, runner._witness_full, az_mont, bz_mont
+        compiled, z_std, az_mont, bz_mont, public_signals
     )
     print(
         f"\nPublic signals ({len(runner._last_public_signals)}): "

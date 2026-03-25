@@ -76,30 +76,46 @@ class GnarkBenchmarkRunner:
         print(f"Compile: {self.t_compile:.1f}s")
         return compiled
 
-    def prepare_solutions(self, data: GnarkProvingData) -> tuple[jax.Array, jax.Array]:
-        """Solve witness + compute Az/Bz via native solver.
+    def prepare_solutions(
+        self, data: GnarkProvingData, compiled: "CompiledProver"
+    ) -> tuple[jax.Array, jax.Array, jax.Array, list[str]]:
+        """Solve witness + compute Az/Bz + prepare z_std and public_signals.
 
         Uses the solver data loaded during ``load()`` and the witness from
         the proving data.
+
+        Returns:
+            Tuple of (z_std, az_mont, bz_mont, public_signals).
         """
+        import jax.numpy as jnp
+        from jax import lax
+        from zk_dtypes import bn254_sf, bn254_sf_mont
+
         from rabbitsnark.gnark.compute_abc import solve_and_compute
 
         print("\nSolving witness + computing Az/Bz via native solver...")
         t0 = time.perf_counter()
-        self._witness_full, az_mont, bz_mont = solve_and_compute(
+        witness_full, az_mont, bz_mont = solve_and_compute(
             data.witness_full,
             self.solver,
         )
         self.t_prep = time.perf_counter() - t0
         print(f"Solution prep: {self.t_prep:.1f}s")
-        return az_mont, bz_mont
+
+        z_mont = jnp.array(witness_full, dtype=bn254_sf_mont)
+        z_std = lax.convert_element_type(z_mont, bn254_sf)
+        public_signals = [
+            str(int(witness_full[i])) for i in range(compiled.config.num_public)
+        ]
+        return z_std, az_mont, bz_mont, public_signals
 
     def run_prove_iterations(
         self,
         compiled: CompiledProver,
-        witness_mont: jax.Array,
+        z_std: jax.Array,
         az_mont: jax.Array,
         bz_mont: jax.Array,
+        public_signals: list[str],
     ) -> list[float]:
         """Run warmup + measured prove iterations.
 
@@ -120,10 +136,11 @@ class GnarkBenchmarkRunner:
                 f"deterministic={self.config.deterministic})..."
             )
             t0 = time.perf_counter()
-            proof, public_signals = compiled.prove_gnark(
-                witness_mont,
+            proof, pub = compiled.prove(
+                z_std,
                 az_mont,
                 bz_mont,
+                public_signals,
                 no_zk=self.config.no_zk,
                 deterministic=self.config.deterministic,
             )
@@ -132,7 +149,7 @@ class GnarkBenchmarkRunner:
             print(f"Prove: {t_prove:.1f}s")
 
             self._last_proof = proof
-            self._last_public_signals = public_signals
+            self._last_public_signals = pub
 
         return prove_times_all[self.config.warmup :]
 

@@ -16,12 +16,13 @@
 """Groth16 zero-knowledge proof generation and verification."""
 
 from .proof import Groth16Proof, write_public_signals
-from .prover import CompiledProver, compile_circom, compile_gnark
+from .prover import CompiledProver, ProveConfig, compile_circom, compile_gnark
 from .verifier import VerificationKey, verify
 
 __all__ = [
     "CompiledProver",
     "Groth16Proof",
+    "ProveConfig",
     "VerificationKey",
     "compile_circom",
     "compile_gnark",
