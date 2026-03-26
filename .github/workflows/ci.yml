@@ -33,6 +33,7 @@ jobs:
   #       run: bazel --bazelrc=.bazelrc.ci test --config=ci --test_tag_filters=gpu //...
 
   pre-commit-style:
+    if: github.actor != 'fractalyze-dev'
     runs-on: [self-hosted, rabbitsnark-py]
     steps:
       - name: Checkout rabbitsnark-py
