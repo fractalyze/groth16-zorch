@@ -16,11 +16,10 @@
 
 __version__ = "0.1.0"
 
-from rabbitsnark import gnark, groth16, ntt
+from rabbitsnark import gnark, groth16
 
 __all__ = [
     "__version__",
     "gnark",
     "groth16",
-    "ntt",
 ]

@@ -25,52 +25,61 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import jax.numpy as jnp
 from absl.testing import absltest
+from zk_dtypes import bn254_sf
 
+from rabbitsnark.circom.compute_az_bz import compute_az_bz_circom
 from rabbitsnark.circom.wtns import parse_wtns
 from rabbitsnark.circom.zkey import parse_zkey
-from rabbitsnark.groth16 import compile_circom
+from rabbitsnark.groth16 import compile_circom, write_public_signals
 from rabbitsnark.groth16.verifier import VerificationKey, verify
-from tests.circom.testutil import compute_az_bz
 
 
 class TestCircomE2EProveVerify(absltest.TestCase):
-    """End-to-end: compile_circom -> prove_circom -> verify."""
+    """End-to-end: compile_circom -> prove -> verify."""
 
     def setUp(self):
         test_data_dir = Path(__file__).parent / "data"
         self.zkey = parse_zkey(test_data_dir / "multiplier_3.zkey")
         self.wtns = parse_wtns(test_data_dir / "multiplier_3.wtns")
         self.compiled = compile_circom(self.zkey)
-        self.az_mont, self.bz_mont = compute_az_bz(self.zkey, self.wtns)
+        self.az_mont, self.bz_mont = compute_az_bz_circom(self.zkey, self.wtns)
+        self.z_std = jnp.array([int(w) for w in self.wtns.witnesses], dtype=bn254_sf)
+        self.public_signals = write_public_signals(
+            self.wtns.witnesses, self.compiled.config.num_public
+        )
         self.vk = VerificationKey.from_zkey(self.zkey)
 
     def test_prove_verify_no_zk(self):
         """Deterministic proof (r=s=0) verifies correctly."""
-        proof, public_signals = self.compiled.prove_circom(
-            self.wtns,
+        proof, public_signals = self.compiled.prove(
+            self.z_std,
             self.az_mont,
             self.bz_mont,
+            self.public_signals,
             no_zk=True,
         )
         self.assertTrue(verify(self.vk, proof, public_signals))
 
     def test_prove_verify_with_zk(self):
         """Randomized ZK proof verifies correctly."""
-        proof, public_signals = self.compiled.prove_circom(
-            self.wtns,
+        proof, public_signals = self.compiled.prove(
+            self.z_std,
             self.az_mont,
             self.bz_mont,
+            self.public_signals,
             no_zk=False,
         )
         self.assertTrue(verify(self.vk, proof, public_signals))
 
     def test_invalid_signal_rejects(self):
         """Proof with wrong public signals should fail verification."""
-        proof, _ = self.compiled.prove_circom(
-            self.wtns,
+        proof, _ = self.compiled.prove(
+            self.z_std,
             self.az_mont,
             self.bz_mont,
+            self.public_signals,
             no_zk=True,
         )
         # Wrong public signal (99 instead of 60)

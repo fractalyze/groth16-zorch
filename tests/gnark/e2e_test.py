@@ -23,7 +23,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import jax.numpy as jnp
 from absl.testing import absltest
+from jax import lax
+from zk_dtypes import bn254_sf, bn254_sf_mont
 
 from rabbitsnark.gnark import load_gnark_export, load_solver_data, solve_and_compute
 from rabbitsnark.groth16 import compile_gnark
@@ -38,47 +41,56 @@ class TestGnarkE2EProveVerify(absltest.TestCase):
         self.data = load_gnark_export(self.data_dir)
         self.compiled = compile_gnark(self.data)
         solver = load_solver_data(self.data_dir)
-        self.witness_full, self.az_mont, self.bz_mont = solve_and_compute(
+        witness_full, self.az_mont, self.bz_mont = solve_and_compute(
             self.data.witness_full,
             solver,
         )
+        z_mont = jnp.array(witness_full, dtype=bn254_sf_mont)
+        self.z_std = lax.convert_element_type(z_mont, bn254_sf)
+        self.public_signals = [
+            str(int(witness_full[i])) for i in range(self.compiled.config.num_public)
+        ]
         self.vk = VerificationKey.from_gnark(self.data)
 
     def test_prove_verify_no_zk(self):
         """Deterministic proof (r=s=0) verifies correctly."""
-        proof, public_signals = self.compiled.prove_gnark(
-            self.witness_full,
+        proof, public_signals = self.compiled.prove(
+            self.z_std,
             self.az_mont,
             self.bz_mont,
+            self.public_signals,
             no_zk=True,
         )
         self.assertTrue(verify(self.vk, proof, public_signals))
 
     def test_prove_verify_deterministic(self):
         """Deterministic proof (fixed non-zero r, s) verifies correctly."""
-        proof, public_signals = self.compiled.prove_gnark(
-            self.witness_full,
+        proof, public_signals = self.compiled.prove(
+            self.z_std,
             self.az_mont,
             self.bz_mont,
+            self.public_signals,
             deterministic=True,
         )
         self.assertTrue(verify(self.vk, proof, public_signals))
 
     def test_prove_verify_with_zk(self):
         """Randomized ZK proof verifies correctly."""
-        proof, public_signals = self.compiled.prove_gnark(
-            self.witness_full,
+        proof, public_signals = self.compiled.prove(
+            self.z_std,
             self.az_mont,
             self.bz_mont,
+            self.public_signals,
         )
         self.assertTrue(verify(self.vk, proof, public_signals))
 
     def test_invalid_signal_rejects(self):
         """Public signal modification causes verification failure."""
-        proof, public_signals = self.compiled.prove_gnark(
-            self.witness_full,
+        proof, public_signals = self.compiled.prove(
+            self.z_std,
             self.az_mont,
             self.bz_mont,
+            self.public_signals,
             no_zk=True,
         )
         # Tamper: change first public signal

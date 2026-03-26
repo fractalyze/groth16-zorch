@@ -17,18 +17,18 @@
 
 Separates one-time circuit compilation from per-proof computation:
 
-    compiled = compile_circom(zkey)                    # parse zkey (one-time)
-    proof, signals = compiled.prove_circom(wtns, az, bz)  # per-witness
+    compiled = compile_circom(zkey)       # or compile_gnark(data)
+    proof, signals = compiled.prove(z_std, az_mont, bz_mont, public_signals)
 
 Architecture:
-    compile_circom(zkey) -> CompiledProver
+    compile_circom(zkey) / compile_gnark(data) -> CompiledProver
     |-- NTT twiddle arrays
     |-- Coset shift powers
     |-- Point arrays (affine)
     +-- VK / Delta points (affine scalars)
 
-    CompiledProver.prove_circom(wtns, az_mont, bz_mont)
-    |-- Input preparation: z_std, r, s, r*s  (per-proof)
+    CompiledProver.prove(z_std, az_mont, bz_mont, public_signals)
+    |-- ZK blinding: r, s, r*s generation
     +-- Phase 1: _prove_ntt(config, ...)  <- JIT
     |  |-- Cz = Az ⊙ Bz (Hadamard)
     |  |-- IFFT x 3 → Coset NTT x 3
@@ -65,18 +65,20 @@ from zk_dtypes import (
     bn254_sf_mont,
 )
 
-from rabbitsnark.ntt import BN254_FR_ROOT_OF_UNITY, NTT
-
 from .proof import Groth16Proof, write_public_signals  # noqa: F401
 
 if TYPE_CHECKING:
-    import numpy as np
     from jax import Array
 
-    from rabbitsnark.circom.wtns.wtns import WtnsV2
     from rabbitsnark.circom.zkey.verifying_key import G1Point, G2Point
     from rabbitsnark.circom.zkey.zkey import ZKeyV1
     from rabbitsnark.gnark.types import GnarkProvingData
+
+# Subgroup generators for NTT root of unity computation.
+# circom uses generator 7: root = 7^((p - 1) / n) mod p
+# gnark  uses generator 5: root = 5^((p - 1) / n) mod p
+CIRCOM_GENERATOR = 7
+GNARK_GENERATOR = 5
 
 BN254_TWO_ADIC_BITS = 28
 BN254_FR_MODULUS = (
@@ -91,13 +93,6 @@ GNARK_COSET_GEN = 5
 # with realistic non-zero operands (unlike no_zk where r=s=0 skips work).
 _DETERMINISTIC_R = 7
 _DETERMINISTIC_S = 11
-# gnark uses 5^((p - 1) / 2²⁸) as the primitive 2²⁸-th root of unity.
-# BN254_FR_ROOT_OF_UNITY (from the NTT module) uses generator 7 instead of 5,
-# giving a different primitive root.  The prover MUST use the same root as the
-# CRS / proving key to get correct h-polynomial coefficients.
-GNARK_FR_ROOT_OF_UNITY = (
-    19103219067921713944291392827692070036145651957329286315305642004821462161904
-)
 
 
 class ProveConfig(NamedTuple):
@@ -106,6 +101,7 @@ class ProveConfig(NamedTuple):
     log_n: int
     num_public: int  # l -- for z[l+1:m] slicing
     is_circom: bool = True
+    generator: int = CIRCOM_GENERATOR
 
 
 @dataclass
@@ -113,14 +109,10 @@ class CompiledProver:
     """Pre-compiled proving key -- reusable across proofs.
 
     Created by ``compile_circom(zkey)`` or ``compile_gnark(data)``.
-    Call ``prove_circom()`` or ``prove_gnark()`` to generate proofs.
+    Call ``prove(z_std, az_mont, bz_mont, public_signals)`` to generate proofs.
     """
 
     config: ProveConfig
-    # NTT arrays (per-stage twiddles, pre-extracted)
-    fwd_stage_twiddles: tuple[Array, ...]
-    inv_stage_twiddles: tuple[Array, ...]
-    inv_n: Array
     shift_powers: Array
     # Point arrays (affine)
     pa1: Array  # bn254_g1_affine [m]
@@ -169,9 +161,6 @@ class CompiledProver:
             self.config,
             az_mont,
             bz_mont,
-            self.fwd_stage_twiddles,
-            self.inv_stage_twiddles,
-            self.inv_n,
             self.shift_powers,
             den,
             inv_sp,
@@ -204,21 +193,26 @@ class CompiledProver:
                 _to_cpu(self.delta_g2),
             )
 
-    def prove_circom(
+    def prove(
         self,
-        wtns: WtnsV2,
+        z_std: Array,
         az_mont: Array,
         bz_mont: Array,
+        public_signals: list[str],
         *,
         no_zk: bool = False,
         deterministic: bool = False,
     ) -> tuple[Groth16Proof, list[str]]:
-        """Generate a Groth16 proof from a witness.
+        """Generate a Groth16 proof.
+
+        Caller prepares z_std, az_mont, bz_mont, and public_signals
+        regardless of circuit format (circom / gnark).
 
         Args:
-            wtns: Parsed witness (WtnsV2).
+            z_std: Full witness in standard form (bn254_sf).
             az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
             bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
+            public_signals: Public signals as decimal string list.
             no_zk: If True, use r=s=0 (no ZK blinding, eliminates EC muls).
             deterministic: If True, use fixed non-zero r, s for reproducible
                 proofs that still exercise full ZK blinding computation.
@@ -226,8 +220,6 @@ class CompiledProver:
         Returns:
             Tuple of (proof, public_signals).
         """
-        z_std = jnp.array([int(w) for w in wtns.witnesses], dtype=bn254_sf)
-
         if no_zk:
             r_int, s_int = 0, 0
         elif deterministic:
@@ -251,70 +243,6 @@ class CompiledProver:
         )
 
         proof = Groth16Proof(pi_a=pi_a, pi_b=pi_b2, pi_c=pi_c)
-        public_signals = write_public_signals(wtns.witnesses, self.config.num_public)
-
-        return proof, public_signals
-
-    def prove_gnark(
-        self,
-        witness_mont: np.ndarray,
-        az_mont: Array,
-        bz_mont: Array,
-        *,
-        no_zk: bool = False,
-        deterministic: bool = False,
-    ) -> tuple[Groth16Proof, list[str]]:
-        """Generate a Groth16 proof from gnark solved witness + pre-computed Az/Bz.
-
-        Args:
-            witness_mont: Full solved witness as bn254_sf_mont numpy array
-                (raw Montgomery form from Go exporter), shape (num_wires,).
-            az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
-            bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
-            no_zk: If True, use r=s=0 (no ZK blinding, eliminates EC muls).
-            deterministic: If True, use fixed non-zero r, s for reproducible
-                proofs that still exercise full ZK blinding computation.
-
-        Returns:
-            Tuple of (proof, public_signals).
-        """
-        # Convert witness from Montgomery to standard form for MSM scalars.
-        # The Go exporter writes raw Montgomery bytes; the caller reinterprets
-        # them as bn254_sf_mont.  lax.convert_element_type performs Montgomery
-        # reduction (multiply by R⁻¹ mod p).
-        z_mont = jnp.array(witness_mont, dtype=bn254_sf_mont)
-        z_std = lax.convert_element_type(z_mont, bn254_sf)
-
-        if no_zk:
-            r_int, s_int = 0, 0
-        elif deterministic:
-            r_int, s_int = _DETERMINISTIC_R, _DETERMINISTIC_S
-        else:
-            r_int = secrets.randbelow(BN254_FR_MODULUS)
-            s_int = secrets.randbelow(BN254_FR_MODULUS)
-
-        r_val = jnp.array(r_int, dtype=bn254_sf)
-        s_val = jnp.array(s_int, dtype=bn254_sf)
-        rs = bn254_sf(r_int) * bn254_sf(s_int)
-        rs_val = jnp.array(rs, dtype=bn254_sf)
-
-        pi_a, pi_b2, pi_c = self._run_prove(
-            z_std,
-            az_mont,
-            bz_mont,
-            r_val,
-            s_val,
-            rs_val,
-        )
-
-        proof = Groth16Proof(pi_a=pi_a, pi_b=pi_b2, pi_c=pi_c)
-        # gnark: public inputs at wire indices 0..num_public-1.
-        # witness_mont contains Montgomery values; int() on bn254_sf_mont
-        # returns the standard-form value (Montgomery reduction applied).
-        public_signals = [
-            str(int(witness_mont[i])) for i in range(self.config.num_public)
-        ]
-
         return proof, public_signals
 
 
@@ -336,16 +264,14 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
     log_n = int(math.log2(domain_size))
     vk = zkey.verifying_key
 
-    # NTT per-stage twiddle arrays
-    ntt = NTT(bn254_sf_mont, BN254_FR_ROOT_OF_UNITY)
-    fwd_stage_twiddles, inv_stage_twiddles, inv_n = ntt.get_stage_twiddles(log_n)
-
-    # Coset shift powers: [1, g, g², ..., g^(n-1)] where g = omega_{2n}
-    coset_shift = jnp.array(
-        bn254_sf_mont(BN254_FR_ROOT_OF_UNITY)
-        ** (1 << (BN254_TWO_ADIC_BITS - log_n - 1)),
-        dtype=bn254_sf_mont,
+    # Coset shift powers: [1, g, g², ..., g^(n - 1)] where g = ω₂ₙ
+    # ω₂ₙ = generator^((p - 1) / (2 * n)) mod p
+    coset_shift_int = pow(
+        CIRCOM_GENERATOR,
+        (BN254_FR_MODULUS - 1) // (2 * domain_size),
+        BN254_FR_MODULUS,
     )
+    coset_shift = jnp.array(bn254_sf_mont(coset_shift_int), dtype=bn254_sf_mont)
     shift_powers = _build_shift_powers(coset_shift, log_n)
 
     # Point arrays (affine — lax.msm takes affine directly)
@@ -368,13 +294,11 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
         log_n=log_n,
         num_public=num_public,
         is_circom=True,
+        generator=CIRCOM_GENERATOR,
     )
 
     return CompiledProver(
         config=config,
-        fwd_stage_twiddles=fwd_stage_twiddles,
-        inv_stage_twiddles=inv_stage_twiddles,
-        inv_n=inv_n,
         shift_powers=shift_powers,
         pa1=pa1,
         pb1=pb1,
@@ -405,12 +329,6 @@ def compile_gnark(data: GnarkProvingData) -> CompiledProver:
     num_public = data.num_public
     domain_size = data.domain_size
     log_n = int(math.log2(domain_size))
-
-    # NTT per-stage twiddle arrays.
-    # Must use gnark's root of unity (generator 5) to match the CRS evaluation
-    # domain — using a different primitive root gives wrong h-polynomial.
-    ntt = NTT(bn254_sf_mont, GNARK_FR_ROOT_OF_UNITY)
-    fwd_stage_twiddles, inv_stage_twiddles, inv_n = ntt.get_stage_twiddles(log_n)
 
     # Coset shift powers: [1, g, g², ..., g^(n-1)]
     # gnark uses Fr multiplicative generator (= 5) as coset shift,
@@ -454,13 +372,11 @@ def compile_gnark(data: GnarkProvingData) -> CompiledProver:
         log_n=log_n,
         num_public=num_public,
         is_circom=False,
+        generator=GNARK_GENERATOR,
     )
 
     return CompiledProver(
         config=config,
-        fwd_stage_twiddles=fwd_stage_twiddles,
-        inv_stage_twiddles=inv_stage_twiddles,
-        inv_n=inv_n,
         shift_powers=shift_powers,
         pa1=pa1,
         pb1=pb1,
@@ -487,10 +403,6 @@ def _prove_ntt(
     config: ProveConfig,
     az_mont: Array,
     bz_mont: Array,
-    # NTT arrays (per-stage twiddles)
-    fwd_stage_tw: tuple[Array, ...],
-    inv_stage_tw: tuple[Array, ...],
-    inv_n: Array,
     shift_powers: Array,
     # Gnark-specific (unused dummy for circom — never traced)
     den: Array,
@@ -499,22 +411,23 @@ def _prove_ntt(
     """Phase 1: NTT + field arithmetic → h-polynomial scalars.
 
     GPU-safe JIT function.  Returns h_scalars (bn254_sf) for the MSM phase.
+    Uses ``lax.fft`` with the protocol-specific root of unity.
     """
-    log_n = config.log_n
-    n = 1 << log_n
+    n = 1 << config.log_n
+    gen = config.generator
 
     # Hadamard: Cz = Az ⊙ Bz
     cz = az_mont * bz_mont
 
     # IFFT x 3
-    a_poly = NTT.inverse_ntt(az_mont, inv_n, log_n, *inv_stage_tw)
-    b_poly = NTT.inverse_ntt(bz_mont, inv_n, log_n, *inv_stage_tw)
-    c_poly = NTT.inverse_ntt(cz, inv_n, log_n, *inv_stage_tw)
+    a_poly = lax.fft(az_mont, "IFFT", n, generator=gen)
+    b_poly = lax.fft(bz_mont, "IFFT", n, generator=gen)
+    c_poly = lax.fft(cz, "IFFT", n, generator=gen)
 
     # Coset NTT x 3
-    a_coset = NTT.forward_ntt(a_poly * shift_powers, log_n, *fwd_stage_tw)
-    b_coset = NTT.forward_ntt(b_poly * shift_powers, log_n, *fwd_stage_tw)
-    c_coset = NTT.forward_ntt(c_poly * shift_powers, log_n, *fwd_stage_tw)
+    a_coset = lax.fft(a_poly * shift_powers, "FFT", n, generator=gen)
+    b_coset = lax.fft(b_poly * shift_powers, "FFT", n, generator=gen)
+    c_coset = lax.fft(c_poly * shift_powers, "FFT", n, generator=gen)
 
     # Quotient: h = a * b - c on coset
     h_evals_mont = a_coset * b_coset - c_coset
@@ -523,7 +436,7 @@ def _prove_ntt(
         return lax.convert_element_type(h_evals_mont, bn254_sf)
     else:
         h_evals_mont = h_evals_mont * den
-        h_poly = NTT.inverse_ntt(h_evals_mont, inv_n, log_n, *inv_stage_tw)
+        h_poly = lax.fft(h_evals_mont, "IFFT", n, generator=gen)
         h_coeffs = h_poly * inv_shift_powers
         h_coeffs = lax.bit_reverse(h_coeffs, dimensions=[0])
         return lax.convert_element_type(h_coeffs[: n - 1], bn254_sf)
