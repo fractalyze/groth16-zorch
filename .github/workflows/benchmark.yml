@@ -29,9 +29,11 @@ on:
       - ".gitignore"
       - ".github/**"
 
+# Cancel in-progress runs for PRs (same head branch), but never cancel
+# pushes to main so that every merge gets a full CI run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   groth16-gpu:
