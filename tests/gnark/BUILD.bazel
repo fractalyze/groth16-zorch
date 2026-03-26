@@ -48,22 +48,36 @@ py_test(
     ],
 )
 
+_E2E_DATA = [
+    ":testdata",
+    "@r1cs_solver//solver:libr1cs_solver.so",
+]
+
+_E2E_DEPS = [
+    "//rabbitsnark:gnark",
+    "//rabbitsnark:groth16",
+    "@pypi//absl_py",
+    "@pypi//jax",
+    "@pypi//numpy",
+    "@pypi//zk_dtypes",
+]
+
 py_test(
     name = "e2e_test",
     srcs = ["e2e_test.py"],
-    data = [
-        ":testdata",
-        "@r1cs_solver//solver:libr1cs_solver.so",
-    ],
+    data = _E2E_DATA,
     # TODO(b/369): Remove manual tag when jaxlib 0.0.5 is released.
     # Requires lax.msm (CPU) and lax.pairing_check (CPU) from jaxlib >= 0.0.5.
     tags = ["manual"],
-    deps = [
-        "//rabbitsnark:gnark",
-        "//rabbitsnark:groth16",
-        "@pypi//absl_py",
-        "@pypi//jax",
-        "@pypi//numpy",
-        "@pypi//zk_dtypes",
-    ],
+    deps = _E2E_DEPS,
+)
+
+py_test(
+    name = "e2e_gpu_test",
+    srcs = ["e2e_test.py"],
+    data = _E2E_DATA,
+    env = {"JAX_PLATFORMS": "cpu,cuda"},
+    main = "e2e_test.py",
+    tags = ["gpu"],
+    deps = _E2E_DEPS + ["@pypi//zkx_cuda_pjrt"],
 )
