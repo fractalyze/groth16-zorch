@@ -399,8 +399,8 @@ def compute_abc(
         bz_mont = np.concatenate([bz_mont, pad])
 
     return (
-        jnp.array(az_mont.tolist(), dtype=bn254_sf_mont),
-        jnp.array(bz_mont.tolist(), dtype=bn254_sf_mont),
+        jnp.array(az_mont),
+        jnp.array(bz_mont),
     )
 
 
