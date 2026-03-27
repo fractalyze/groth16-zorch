@@ -18,6 +18,7 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 py_library(
     name = "sp1_groth16_lib",
     srcs = ["sp1_groth16.py"],
+    data = ["@r1cs_solver//solver:libr1cs_solver.so"],
     deps = [
         "//rabbitsnark:gnark",
         "//rabbitsnark:groth16",
