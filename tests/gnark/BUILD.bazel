@@ -53,8 +53,8 @@ _E2E_DATA = [
 _E2E_DEPS = [
     "//rabbitsnark:gnark",
     "//rabbitsnark:groth16",
+    "//rabbitsnark:r1cs_solver",
     "@pypi//absl_py",
-    "@pypi//jax",
     "@pypi//numpy",
     "@pypi//zk_dtypes",
 ]

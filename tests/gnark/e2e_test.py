@@ -23,14 +23,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import jax.numpy as jnp
 from absl.testing import absltest
-from jax import lax
-from zk_dtypes import bn254_sf, bn254_sf_mont
 
-from rabbitsnark.gnark import load_gnark_export, load_solver_data, solve_and_compute
+from rabbitsnark.gnark import load_gnark_export, load_solver_data
 from rabbitsnark.groth16 import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
+from rabbitsnark.r1cs_solver import solve_and_compute
 
 
 class TestGnarkE2EProveVerify(absltest.TestCase):
@@ -41,14 +39,12 @@ class TestGnarkE2EProveVerify(absltest.TestCase):
         self.data = load_gnark_export(self.data_dir)
         self.compiled = compile_gnark(self.data)
         solver = load_solver_data(self.data_dir)
-        witness_full, self.az_mont, self.bz_mont = solve_and_compute(
+        self.z_std, self.az_mont, self.bz_mont = solve_and_compute(
             self.data.witness_full,
             solver,
         )
-        z_mont = jnp.array(witness_full, dtype=bn254_sf_mont)
-        self.z_std = lax.convert_element_type(z_mont, bn254_sf)
         self.public_signals = [
-            str(int(witness_full[i])) for i in range(self.compiled.config.num_public)
+            str(int(self.z_std[i])) for i in range(self.compiled.config.num_public)
         ]
         self.vk = VerificationKey.from_gnark(self.data)
 

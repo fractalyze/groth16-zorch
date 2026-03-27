@@ -60,17 +60,6 @@ py_library(
 )
 
 py_library(
-    name = "circom_compute_az_bz",
-    srcs = ["circom/compute_az_bz.py"],
-    deps = [
-        ":circom_wtns",
-        ":circom_zkey",
-        "@pypi//jax",
-        "@pypi//zk_dtypes",
-    ],
-)
-
-py_library(
     name = "circom_witness_calculator",
     srcs = ["circom/witness_calculator.py"],
     deps = [
@@ -84,8 +73,21 @@ py_library(
     srcs = ["circom/zkey_to_csr.py"],
     deps = [
         ":circom_zkey",
-        ":gnark",
+        ":r1cs_solver",
         "@pypi//numpy",
+    ],
+)
+
+py_library(
+    name = "r1cs_solver",
+    srcs = [
+        "r1cs_solver/__init__.py",
+        "r1cs_solver/solver.py",
+    ],
+    deps = [
+        "@pypi//jax",
+        "@pypi//numpy",
+        "@pypi//zk_dtypes",
     ],
 )
 
@@ -98,7 +100,7 @@ py_library(
         "gnark/types.py",
     ],
     deps = [
-        "@pypi//jax",
+        ":r1cs_solver",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
     ],
@@ -114,7 +116,8 @@ py_library(
     ],
     deps = [
         ":circom_zkey",
-        ":gnark",
+        ":circom_zkey_to_csr",
+        ":r1cs_solver",
         "@pypi//jax",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
@@ -125,14 +128,12 @@ py_library(
     name = "cli",
     srcs = ["cli.py"],
     deps = [
-        ":circom_compute_az_bz",
         ":circom_witness_calculator",
         ":circom_wtns",
         ":circom_zkey",
-        ":circom_zkey_to_csr",
         ":gnark",
         ":groth16",
-        "@pypi//jax",
+        ":r1cs_solver",
         "@pypi//zk_dtypes",
     ],
 )
@@ -146,5 +147,6 @@ py_library(
         ":cli",
         ":gnark",
         ":groth16",
+        ":r1cs_solver",
     ],
 )

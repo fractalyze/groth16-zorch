@@ -16,8 +16,10 @@
 """Coefficient representation for R1CS constraints.
 
 Coefficients in zkey files are stored in double Montgomery form (aR²).
-We use zk_dtypes' C++ Montgomery reduction via ``from_raw()`` to convert
-back to standard form with two reductions.
+We keep the raw aR² value so that the native r1cs-solver (which uses
+Montgomery arithmetic) can compute Az/Bz correctly via bitcast:
+
+    mont_mul(aR², z_std_bitcast) = aR² · z · R⁻¹ = a·z·R = (a·z)_mont
 """
 
 from __future__ import annotations
@@ -46,26 +48,20 @@ class Coefficient:
     matrix: int  # 0 for matrix A, non-zero for matrix B
     constraint: int  # The index of the constraint (0 <= i < n)
     signal: int  # The index of the QAP variables (0 <= j < m)
-    value: int  # The coefficient value (in standard form)
+    value: int  # double Montgomery (aR²)
 
     @classmethod
-    def read(cls, buffer: ReadOnlyBuffer, field_size: int, dtype: type) -> Coefficient:
+    def read(cls, buffer: ReadOnlyBuffer, field_size: int) -> Coefficient:
         """Read a coefficient from the buffer.
 
         Args:
             buffer: The buffer to read from.
             field_size: Size of the field element in bytes.
-            dtype: The scalar field dtype (e.g., ``bn254_sf_mont``) whose
-                ``from_raw()`` performs C++ Montgomery reduction.
         """
         matrix = buffer.read_uint32()
         constraint = buffer.read_uint32()
         signal = buffer.read_uint32()
-        # Coefficient values are stored in double Montgomery form (aR²) in zkey
-        # files. Two C++ Montgomery reductions convert to standard form:
-        #   aR² → aR → a
-        value_double_mont = buffer.read_field_element(field_size)
-        value = int(dtype.from_raw(int(dtype.from_raw(value_double_mont))))
+        value = buffer.read_field_element(field_size)
         return cls(matrix, constraint, signal, value)
 
     @classmethod
