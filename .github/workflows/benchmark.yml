@@ -28,12 +28,18 @@ on:
       - "LICENSE"
       - ".gitignore"
       - ".github/**"
+  workflow_call:
+    inputs:
+      pr_number:
+        type: string
+        required: false
+        default: ""
 
 # Cancel in-progress runs for PRs (same head branch), but never cancel
 # pushes to main so that every merge gets a full CI run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ inputs.pr_number && format('pr-{0}', inputs.pr_number) || github.ref }}
+  cancel-in-progress: ${{ inputs.pr_number != '' || github.ref != 'refs/heads/main' }}
 
 jobs:
   groth16-gpu:
@@ -43,27 +49,120 @@ jobs:
         with:
           fetch-depth: 0
           clean: false
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v2
+      - uses: fractalyze/benchmark-action@v6
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
                 --export_dir=/data/testdata/sp1-groth16/ \
                 --deterministic --circuit=sp1 \
-                --iterations=3 --warmup=1 \
-                --zkbench --output=${{ github.workspace }}/benchmark_results.json
+                --output=${{ github.workspace }}/groth16_gpu_benchmark_results.json
           device: gpu
-          regression_threshold: "0.15"
-          rolling_window: "5"
-          cpu_load_threshold: "0.80"
-          memory_threshold: "0.80"
+          results_file: groth16_gpu_benchmark_results.json
+          results_dir: benchmark_data_groth16
+          baseline_path: benchmark_data_groth16/baseline.json
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           dashboard_token: ${{ secrets.DASHBOARD_TOKEN }}
           slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
-          store_results: ${{ github.ref == 'refs/heads/main' }}
+          store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: benchmark-groth16-gpu
-          path: benchmark_results.json
+          path: groth16_gpu_benchmark_results.json
+          retention-days: 90
+
+  groth16-cpu:
+    needs: groth16-gpu
+    runs-on: [self-hosted, rabbitsnark-py]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
+
+      - uses: fractalyze/benchmark-action@v6
+        with:
+          benchmark_cmd: |
+            JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
+                --export_dir=/data/testdata/sp1-groth16/ \
+                --deterministic --circuit=sp1 \
+                --output=${{ github.workspace }}/groth16_cpu_benchmark_results.json
+          device: cpu
+          results_file: groth16_cpu_benchmark_results.json
+          results_dir: benchmark_data_groth16_cpu
+          baseline_path: benchmark_data_groth16_cpu/baseline.json
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          dashboard_token: ${{ secrets.DASHBOARD_TOKEN }}
+          slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
+          store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-groth16-cpu
+          path: groth16_cpu_benchmark_results.json
+          retention-days: 90
+
+  primitives-gpu:
+    needs: groth16-cpu
+    runs-on: [self-hosted, rabbitsnark-py]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
+
+      - uses: fractalyze/benchmark-action@v6
+        with:
+          benchmark_cmd: |
+            JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
+                --sizes=16,18,20,22 \
+                --output=${{ github.workspace }}/primitives_gpu_benchmark_results.json
+          device: gpu
+          results_file: primitives_gpu_benchmark_results.json
+          results_dir: benchmark_data_primitives
+          baseline_path: benchmark_data_primitives/baseline.json
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          dashboard_token: ${{ secrets.DASHBOARD_TOKEN }}
+          slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
+          store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-primitives-gpu
+          path: primitives_gpu_benchmark_results.json
+          retention-days: 90
+
+  primitives-cpu:
+    needs: primitives-gpu
+    runs-on: [self-hosted, rabbitsnark-py]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
+
+      - uses: fractalyze/benchmark-action@v6
+        with:
+          benchmark_cmd: |
+            JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
+                --sizes=16,18,20,22 \
+                --output=${{ github.workspace }}/primitives_cpu_benchmark_results.json
+          device: cpu
+          results_file: primitives_cpu_benchmark_results.json
+          results_dir: benchmark_data_primitives_cpu
+          baseline_path: benchmark_data_primitives_cpu/baseline.json
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          dashboard_token: ${{ secrets.DASHBOARD_TOKEN }}
+          slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
+          store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-primitives-cpu
+          path: primitives_cpu_benchmark_results.json
           retention-days: 90
