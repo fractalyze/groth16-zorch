@@ -13,20 +13,41 @@
 # limitations under the License.
 # ==============================================================================
 
+# Trigger benchmark workflow on PR branch via /benchmark comment.
+#
+# Uses workflow_dispatch with --ref to run the PR branch's workflow file,
+# ensuring the benchmark targets match the PR's code (not main's).
+
 name: "Benchmark (trigger)"
 
-permissions: read-all
+permissions:
+  actions: write
+  pull-requests: read
 
 on:
   issue_comment:
     types: [created]
 
 jobs:
-  benchmark:
+  dispatch:
     if: >-
       github.event.issue.pull_request &&
       github.event.comment.body == '/benchmark'
-    uses: ./.github/workflows/benchmark.yml
-    with:
-      pr_number: ${{ format('{0}', github.event.issue.number) }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get PR head ref
+        id: pr
+        run: |
+          gh api repos/${{ github.repository }}/pulls/${{ github.event.issue.number }} \
+            --jq '.head.ref' | tee /dev/stderr | xargs -I{} echo "ref={}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Dispatch benchmark on PR branch
+        run: |
+          gh workflow run benchmark.yml \
+            --repo ${{ github.repository }} \
+            --ref "${{ steps.pr.outputs.ref }}" \
+            -f pr_number=${{ github.event.issue.number }}
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -21,6 +21,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      pr_number:
+        type: string
+        required: false
+        default: ""
   push:
     branches: ["main"]
     paths-ignore:
