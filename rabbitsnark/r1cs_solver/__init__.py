@@ -13,8 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Shared test utilities for circom Groth16 tests."""
+"""Native R1CS solver wrapper — shared by circom and gnark."""
 
-from rabbitsnark.circom.compute_az_bz import compute_az_bz_circom as compute_az_bz
+from .solver import (
+    CSRMatrices,
+    SolverData,
+    compute_abc,
+    solve_and_compute,
+    solve_witness,
+)
 
-__all__ = ["compute_az_bz"]
+__all__ = [
+    "CSRMatrices",
+    "SolverData",
+    "compute_abc",
+    "solve_and_compute",
+    "solve_witness",
+]

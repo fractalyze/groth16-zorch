@@ -28,7 +28,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from rabbitsnark.circom.zkey.zkey import ZKeyV1
-    from rabbitsnark.gnark.compute_abc import CSRMatrices
+    from rabbitsnark.r1cs_solver import CSRMatrices
 
 FIELD_ELEM_SIZE = 32  # 256-bit BN254 scalar = 32 bytes
 
@@ -45,7 +45,7 @@ def zkey_to_csr(zkey: "ZKeyV1") -> "CSRMatrices":
     Returns:
         CSRMatrices with A, B populated and C empty.
     """
-    from rabbitsnark.gnark.compute_abc import CSRMatrices
+    from rabbitsnark.r1cs_solver import CSRMatrices
 
     n = zkey.domain_size
     modulus = zkey.header_groth.r.to_int()

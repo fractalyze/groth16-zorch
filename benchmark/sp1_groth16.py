@@ -39,10 +39,10 @@ from jax import lax
 from zk_dtypes import bn254_sf, bn254_sf_mont
 from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
 
-from rabbitsnark.gnark.compute_abc import load_solver_data, solve_and_compute
-from rabbitsnark.gnark.loader import load_gnark_export
+from rabbitsnark.gnark import load_gnark_export, load_solver_data
 from rabbitsnark.groth16.prover import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
+from rabbitsnark.r1cs_solver import solve_and_compute
 
 
 def _hash_bytes(data: bytes) -> str:

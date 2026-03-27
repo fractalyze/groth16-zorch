@@ -157,29 +157,25 @@ class TestZKeyParser(absltest.TestCase):
         self.assertEqual(zkey.ic, expected_ic)
 
     def test_coefficients(self):
-        """Test that coefficients are parsed correctly."""
+        """Test that coefficients are parsed correctly (values in aR² form)."""
         zkey_path = self.test_data_dir / "multiplier_3.zkey"
         zkey = parse_zkey(zkey_path)
         self.assertIsInstance(zkey, ZKeyV1)
 
-        # Expected coefficients from the C++ test
+        # R² mod p (double Montgomery form of 1)
+        _R2 = (
+            944936681149208446651664254269745548490766851729442924617792859073125903783
+        )
+        # -R² mod p (double Montgomery form of -1 = p - 1)
+        _NEG_R2 = 20943306190690066775594741490987529540057597548686591419080411327502682591834  # noqa: E501
+
         expected = [
-            Coefficient.from_ints(
-                matrix=0,
-                constraint=0,
-                signal=2,
-                value=21888242871839275222246405745257275088548364400416034343698204186575808495616,
-            ),
-            Coefficient.from_ints(matrix=1, constraint=0, signal=3, value=1),
-            Coefficient.from_ints(
-                matrix=0,
-                constraint=1,
-                signal=5,
-                value=21888242871839275222246405745257275088548364400416034343698204186575808495616,
-            ),
-            Coefficient.from_ints(matrix=1, constraint=1, signal=4, value=1),
-            Coefficient.from_ints(matrix=0, constraint=2, signal=0, value=1),
-            Coefficient.from_ints(matrix=0, constraint=3, signal=1, value=1),
+            Coefficient.from_ints(matrix=0, constraint=0, signal=2, value=_NEG_R2),
+            Coefficient.from_ints(matrix=1, constraint=0, signal=3, value=_R2),
+            Coefficient.from_ints(matrix=0, constraint=1, signal=5, value=_NEG_R2),
+            Coefficient.from_ints(matrix=1, constraint=1, signal=4, value=_R2),
+            Coefficient.from_ints(matrix=0, constraint=2, signal=0, value=_R2),
+            Coefficient.from_ints(matrix=0, constraint=3, signal=1, value=_R2),
         ]
 
         self.assertLen(zkey.coefficients, 6)
