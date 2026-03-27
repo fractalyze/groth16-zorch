@@ -36,11 +36,7 @@ py_binary(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//rabbitsnark:gnark",
-        "//rabbitsnark:groth16",
-        "@pypi//jax",
-        "@pypi//zk_dtypes",
-        "@pypi//zkbench",
+        ":sp1_groth16_lib",
         "@pypi//zkx_cuda_pjrt",
     ],
 )
@@ -65,10 +61,7 @@ py_binary(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@pypi//jax",
-        "@pypi//numpy",
-        "@pypi//zk_dtypes",
-        "@pypi//zkbench",
+        ":primitives_benchmark_lib",
         "@pypi//zkx_cuda_pjrt",
     ],
 )
