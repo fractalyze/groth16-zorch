@@ -425,7 +425,11 @@ def solve_and_compute(
     from jax import lax
     from zk_dtypes import bn254_sf
 
-    witness_full = solve_witness(witness_inputs, solver)
+    if len(witness_inputs) >= solver.num_wires:
+        # Full witness already provided (e.g. from gnark export) — skip solving.
+        witness_full = witness_inputs
+    else:
+        witness_full = solve_witness(witness_inputs, solver)
     az, bz = compute_abc(
         witness_full,
         solver.csr,

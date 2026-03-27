@@ -142,7 +142,7 @@ class CompiledProver:
         bz_mont: Array,
         r_val: Array,
         s_val: Array,
-        rs_val: Array,
+        neg_rs_val: Array,
     ) -> tuple[Array, Array, Array]:
         """Run the proving computation.
 
@@ -189,7 +189,7 @@ class CompiledProver:
                 _to_cpu(msm_5),
                 _to_cpu(r_val),
                 _to_cpu(s_val),
-                _to_cpu(rs_val),
+                _to_cpu(neg_rs_val),
                 _to_cpu(self.alpha1),
                 _to_cpu(self.beta1),
                 _to_cpu(self.beta2),
@@ -234,8 +234,8 @@ class CompiledProver:
 
         r_val = jnp.array(r_int, dtype=bn254_sf)
         s_val = jnp.array(s_int, dtype=bn254_sf)
-        rs = bn254_sf(r_int) * bn254_sf(s_int)
-        rs_val = jnp.array(rs, dtype=bn254_sf)
+        neg_rs = -(bn254_sf(r_int) * bn254_sf(s_int))
+        neg_rs_val = jnp.array(neg_rs, dtype=bn254_sf)
 
         pi_a, pi_b2, pi_c = self._run_prove(
             z_std,
@@ -243,7 +243,7 @@ class CompiledProver:
             bz_mont,
             r_val,
             s_val,
-            rs_val,
+            neg_rs_val,
         )
 
         proof = Groth16Proof(pi_a=pi_a, pi_b=pi_b2, pi_c=pi_c)
@@ -465,7 +465,7 @@ def _prove_phase3(
     msm_5: Array,
     r_val: Array,
     s_val: Array,
-    rs_val: Array,
+    neg_rs_val: Array,
     # VK points (affine scalars)
     alpha1: Array,
     beta1: Array,
@@ -494,16 +494,28 @@ def _prove_phase3(
     pi_b2 = _j2(beta2) + _j2(msm_3)
     pi_c = _j1(msm_4) + _j1(msm_5)
 
-    # ZK blinding via EC scalar multiply (returns jacobian already)
+    # ZK blinding (gnark convention): blind A and B₁ first, then use the
+    # blinded values for the C cross-terms.  gnark computes:
+    #   ar  = A₀ + r·δ₁         (blinded A in G1)
+    #   bs1 = B₁₀ + s·δ₁        (blinded B in G1 — note: s·δ₁, not s·δ₂)
+    #   krs = C₀ + (-r·s)·δ₁ + s·ar + r·bs1
+    # The cross terms s·r·δ₁ from s·ar and r·s·δ₁ from r·bs1 combine with
+    # (-r·s)·δ₁ to give: s·r·δ₁ + r·s·δ₁ - r·s·δ₁ = r·s·δ₁, which is
+    # the correct blinding for the verification equation.
     r_delta1 = r_val * delta_g1
+    s_delta1 = s_val * delta_g1
     s_delta2 = s_val * delta_g2
-    s_pi_a = s_val * pi_a
-    r_pi_b1 = r_val * pi_b1
-    rs_delta1 = rs_val * delta_g1
+    neg_rs_delta1 = neg_rs_val * delta_g1
 
+    # Blind A and B₁ in G1 before scalar multiply for C
     pi_a = pi_a + r_delta1
+    pi_b1 = pi_b1 + s_delta1
     pi_b2 = pi_b2 + s_delta2
-    pi_c = pi_c + s_pi_a + r_pi_b1 + rs_delta1
+
+    # C = C₀ + s·ar + r·bs1 + (-r·s)·δ₁
+    s_ar = s_val * pi_a
+    r_bs1 = r_val * pi_b1
+    pi_c = pi_c + s_ar + r_bs1 + neg_rs_delta1
 
     # Convert to affine for output
     pi_a = lax.convert_element_type(pi_a, bn254_g1_affine)

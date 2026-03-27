@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Iterable
 
 import jax.numpy as jnp
+import numpy as np
 from jax import lax
 from zk_dtypes import bn254_sf, bn254_sf_mont
 from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
@@ -43,6 +44,47 @@ from rabbitsnark.gnark import load_gnark_export, load_solver_data
 from rabbitsnark.groth16.prover import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
 from rabbitsnark.r1cs_solver import solve_and_compute
+
+_SOLUTION_CACHE_DIR = Path("/tmp/rabbitsnark-cache")
+
+
+def _cache_key(export_dir: Path) -> str:
+    """Hash witness_full.bin to derive a stable cache key."""
+    witness_path = export_dir / "witness_full.bin"
+    if not witness_path.exists():
+        return ""
+    h = hashlib.sha256(witness_path.read_bytes()).hexdigest()[:16]
+    return h
+
+
+def _save_solution_cache(
+    cache_dir: Path,
+    key: str,
+    witness_full: np.ndarray,
+    az_mont: jnp.ndarray,
+    bz_mont: jnp.ndarray,
+) -> None:
+    """Save solution vectors as raw bytes (ZK dtypes don't roundtrip via npy)."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    prefix = cache_dir / key
+    witness_full.view(np.uint8).tofile(f"{prefix}_witness.bin")
+    np.array(az_mont).view(np.uint8).tofile(f"{prefix}_az.bin")
+    np.array(bz_mont).view(np.uint8).tofile(f"{prefix}_bz.bin")
+
+
+def _load_solution_cache(
+    cache_dir: Path, key: str
+) -> tuple[np.ndarray, jnp.ndarray, jnp.ndarray] | None:
+    prefix = cache_dir / key
+    paths = [f"{prefix}_{s}.bin" for s in ("witness", "az", "bz")]
+    if not all(Path(p).exists() for p in paths):
+        return None
+    witness_full = np.fromfile(paths[0], dtype=np.uint8).view(np.dtype(bn254_sf_mont))
+    az_raw = np.fromfile(paths[1], dtype=np.uint8).view(np.dtype(bn254_sf_mont))
+    bz_raw = np.fromfile(paths[2], dtype=np.uint8).view(np.dtype(bn254_sf_mont))
+    az_mont = jnp.array(az_raw.tolist(), dtype=bn254_sf_mont)
+    bz_mont = jnp.array(bz_raw.tolist(), dtype=bn254_sf_mont)
+    return witness_full, az_mont, bz_mont
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -106,9 +148,25 @@ class Groth16Benchmark(JaxBenchmark):
 
         print("\nSolving witness + computing Az/Bz...")
         t0 = time.perf_counter()
-        witness_full, az_mont, bz_mont = solve_and_compute(data.witness_full, solver)
-        t_prep = time.perf_counter() - t0
-        print(f"Solution prep: {t_prep:.1f}s")
+        cache_key = _cache_key(export_dir)
+        cached = (
+            _load_solution_cache(_SOLUTION_CACHE_DIR, cache_key) if cache_key else None
+        )
+        if cached is not None:
+            witness_full, az_mont, bz_mont = cached
+            t_prep = time.perf_counter() - t0
+            print(f"Solution prep: {t_prep:.1f}s (cached)")
+        else:
+            witness_full, az_mont, bz_mont = solve_and_compute(
+                data.witness_full, solver
+            )
+            t_prep = time.perf_counter() - t0
+            print(f"Solution prep: {t_prep:.1f}s")
+            if cache_key:
+                _save_solution_cache(
+                    _SOLUTION_CACHE_DIR, cache_key, witness_full, az_mont, bz_mont
+                )
+                print(f"  → cached to {_SOLUTION_CACHE_DIR / cache_key}")
 
         z_mont = jnp.array(witness_full, dtype=bn254_sf_mont)
         z_std = lax.convert_element_type(z_mont, bn254_sf)
