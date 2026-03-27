@@ -223,8 +223,8 @@ zk-dtypes==0.0.4 \
     # via
     #   -r requirements.in
     #   jax
-zkbench==0.2.0 \
-    --hash=sha256:1d3f90f8dc46d9a3be1e3b93e11a9b7e2c3fb90a72ac2f1f62f1b8418b1e77c2
+zkbench==0.3.0 \
+    --hash=sha256:caac698bd3a386d12245f0ab29eb4452faad6d805eddb8b45aff4a28da7b391e
     # via -r requirements.in
 zkx-cuda-pjrt==0.0.5.dev20260326140635 \
     --hash=sha256:79733be764bc3013ad0a281d08ace22d56ee55aa885cf94a37cf95129694a501

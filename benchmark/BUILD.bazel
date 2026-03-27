@@ -13,20 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
-    name = "runner",
-    srcs = [
-        "__init__.py",
-        "runner.py",
-    ],
-    data = ["@r1cs_solver//solver:libr1cs_solver.so"],
-    visibility = ["//visibility:public"],
+    name = "sp1_groth16_lib",
+    srcs = ["sp1_groth16.py"],
     deps = [
         "//rabbitsnark:gnark",
         "//rabbitsnark:groth16",
         "@pypi//jax",
+        "@pypi//zk_dtypes",
+        "@pypi//zkbench",
     ],
 )
 
@@ -39,7 +36,43 @@ py_binary(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":runner",
+        ":sp1_groth16_lib",
+        "@pypi//zkx_cuda_pjrt",
+    ],
+)
+
+py_library(
+    name = "primitives_benchmark_lib",
+    srcs = ["primitives_benchmark.py"],
+    deps = [
+        "@pypi//jax",
+        "@pypi//numpy",
+        "@pypi//zk_dtypes",
+        "@pypi//zkbench",
+    ],
+)
+
+py_binary(
+    name = "primitives_benchmark",
+    srcs = ["primitives_benchmark.py"],
+    tags = [
+        "benchmark",
+        "require-gpu",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":primitives_benchmark_lib",
+        "@pypi//zkx_cuda_pjrt",
+    ],
+)
+
+py_test(
+    name = "benchmark_smoke_test",
+    srcs = ["testing/benchmark_smoke_test.py"],
+    tags = ["gpu"],
+    deps = [
+        ":primitives_benchmark_lib",
+        "@pypi//absl_py",
         "@pypi//zkbench",
     ],
 )

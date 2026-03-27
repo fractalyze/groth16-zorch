@@ -24,8 +24,7 @@ py_library(
     name = "testutil",
     srcs = ["testutil.py"],
     deps = [
-        "@pypi//jax",
-        "@pypi//zk_dtypes",
+        "//rabbitsnark:circom_compute_az_bz",
     ],
 )
 
@@ -56,9 +55,6 @@ py_test(
 py_test(
     name = "groth16_verify_test",
     srcs = ["groth16_verify_test.py"],
-    # TODO(b/369): Remove manual tag when jaxlib 0.0.5 is released.
-    # Requires lax.msm (CPU) and lax.pairing_check (CPU) from jaxlib >= 0.0.5.
-    tags = ["manual"],
     data = [":testdata"],
     deps = [
         "//rabbitsnark:circom_zkey",
@@ -72,6 +68,7 @@ py_test(
 
 _E2E_DEPS = [
     ":testutil",
+    "//rabbitsnark:circom_compute_az_bz",
     "//rabbitsnark:circom_wtns",
     "//rabbitsnark:circom_zkey",
     "//rabbitsnark:groth16",
@@ -84,9 +81,6 @@ _E2E_DEPS = [
 py_test(
     name = "e2e_test",
     srcs = ["e2e_test.py"],
-    # TODO(b/369): Remove manual tag when jaxlib 0.0.5 is released.
-    # Requires lax.msm (CPU) and lax.pairing_check (CPU) from jaxlib >= 0.0.5.
-    tags = ["manual"],
     data = [":testdata"],
     deps = _E2E_DEPS,
 )
