@@ -93,6 +93,11 @@ class TestCircomE2ECircuitProve(absltest.TestCase):
         )
         self.assertTrue(verify(self.vk, proof, public_signals))
 
+    @absltest.skip(
+        "Segfaults during JIT compilation of ZK blinding EC ops in Inline mode. "
+        "Requires AOT EC runtime (prime-ir ECRuntime). Re-enable after ZKX "
+        "jaxlib bump that includes AOT support."
+    )
     def test_prove_verify_with_zk(self):
         """Randomized ZK proof verifies correctly."""
         proof, public_signals = self.compiled.prove(

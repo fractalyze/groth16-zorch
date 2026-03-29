@@ -35,14 +35,59 @@ from pathlib import Path
 from typing import Iterable
 
 import jax.numpy as jnp
-from jax import lax
-from zk_dtypes import bn254_sf, bn254_sf_mont
+import numpy as np
+from zk_dtypes import bn254_sf_mont
 from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
 
 from rabbitsnark.gnark import load_gnark_export, load_solver_data
 from rabbitsnark.groth16.prover import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
 from rabbitsnark.r1cs_solver import solve_and_compute
+
+_SOLUTION_CACHE_DIR = Path("/tmp/rabbitsnark-cache")
+
+
+def _cache_key(export_dir: Path) -> str:
+    """Hash witness_full.bin to derive a stable cache key."""
+    witness_path = export_dir / "witness_full.bin"
+    if not witness_path.exists():
+        return ""
+    h = hashlib.sha256(witness_path.read_bytes()).hexdigest()[:16]
+    return h
+
+
+def _save_solution_cache(
+    cache_dir: Path,
+    key: str,
+    z_std: np.ndarray,
+    az_mont: jnp.ndarray,
+    bz_mont: jnp.ndarray,
+) -> None:
+    """Save solution vectors as raw bytes (ZK dtypes don't roundtrip via npy)."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    prefix = cache_dir / key
+    np.asarray(z_std).view(np.uint8).tofile(f"{prefix}_z_std.bin")
+    np.array(az_mont).view(np.uint8).tofile(f"{prefix}_az.bin")
+    np.array(bz_mont).view(np.uint8).tofile(f"{prefix}_bz.bin")
+
+
+def _load_solution_cache(
+    cache_dir: Path, key: str
+) -> tuple[np.ndarray, jnp.ndarray, jnp.ndarray] | None:
+    prefix = cache_dir / key
+    paths = [f"{prefix}_{s}.bin" for s in ("z_std", "az", "bz")]
+    if not all(Path(p).exists() for p in paths):
+        return None
+    from zk_dtypes import bn254_sf
+
+    z_std = jnp.array(np.fromfile(paths[0], dtype=np.uint8).view(np.dtype(bn254_sf)))
+    az_mont = jnp.array(
+        np.fromfile(paths[1], dtype=np.uint8).view(np.dtype(bn254_sf_mont))
+    )
+    bz_mont = jnp.array(
+        np.fromfile(paths[2], dtype=np.uint8).view(np.dtype(bn254_sf_mont))
+    )
+    return z_std, az_mont, bz_mont
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -90,7 +135,6 @@ class Groth16Benchmark(JaxBenchmark):
         print(f"Loading gnark export from {export_dir}")
         t0 = time.perf_counter()
         data = load_gnark_export(export_dir)
-        solver = load_solver_data(export_dir)
         t_load = time.perf_counter() - t0
         print(
             f"Load: {t_load:.1f}s  "
@@ -106,15 +150,28 @@ class Groth16Benchmark(JaxBenchmark):
 
         print("\nSolving witness + computing Az/Bz...")
         t0 = time.perf_counter()
-        witness_full, az_mont, bz_mont = solve_and_compute(data.witness_full, solver)
-        t_prep = time.perf_counter() - t0
-        print(f"Solution prep: {t_prep:.1f}s")
+        cache_key = _cache_key(export_dir)
+        cached = (
+            _load_solution_cache(_SOLUTION_CACHE_DIR, cache_key) if cache_key else None
+        )
+        if cached is not None:
+            z_std, az_mont, bz_mont = cached
+            t_prep = time.perf_counter() - t0
+            print(f"Solution prep: {t_prep:.1f}s (cached)")
+        else:
+            # Defer solver loading to cache-miss path — CSR matrices are ~10 GB.
+            solver = load_solver_data(export_dir)
+            z_std, az_mont, bz_mont = solve_and_compute(data.witness_full, solver)
+            del solver  # Free ~10 GB CSR matrices before proving
+            t_prep = time.perf_counter() - t0
+            print(f"Solution prep: {t_prep:.1f}s")
+            if cache_key:
+                _save_solution_cache(
+                    _SOLUTION_CACHE_DIR, cache_key, z_std, az_mont, bz_mont
+                )
+                print(f"  → cached to {_SOLUTION_CACHE_DIR / cache_key}")
 
-        z_mont = jnp.array(witness_full, dtype=bn254_sf_mont)
-        z_std = lax.convert_element_type(z_mont, bn254_sf)
-        public_signals = [
-            str(int(witness_full[i])) for i in range(compiled.config.num_public)
-        ]
+        public_signals = [str(int(z_std[i])) for i in range(compiled.config.num_public)]
         vk = VerificationKey.from_gnark(data)
 
         # Mutable container to capture the last proof for verify_fn.
