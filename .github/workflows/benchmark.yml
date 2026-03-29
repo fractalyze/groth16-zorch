@@ -78,40 +78,41 @@ jobs:
           path: groth16_gpu_benchmark_results.json
           retention-days: 90
 
-  groth16-cpu:
-    needs: groth16-gpu
-    runs-on: [self-hosted, rabbitsnark-py]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          clean: false
-          ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
-
-      - uses: fractalyze/benchmark-action@v6
-        with:
-          benchmark_cmd: |
-            JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
-                --export_dir=/data/testdata/sp1-groth16/ \
-                --deterministic --circuit=sp1 \
-                --output=${{ github.workspace }}/groth16_cpu_benchmark_results.json
-          device: cpu
-          results_file: groth16_cpu_benchmark_results.json
-          results_dir: benchmark_data_groth16_cpu
-          baseline_path: benchmark_data_groth16_cpu/baseline.json
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          dashboard_token: ${{ secrets.DASHBOARD_TOKEN }}
-          slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
-          store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-groth16-cpu
-          path: groth16_cpu_benchmark_results.json
-          retention-days: 90
+  # TODO(chokobole): Re-enable groth16-cpu
+  # groth16-cpu:
+  #   needs: groth16-gpu
+  #   runs-on: [self-hosted, rabbitsnark-py]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #         clean: false
+  #         ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
+  #
+  #     - uses: fractalyze/benchmark-action@v6
+  #       with:
+  #         benchmark_cmd: |
+  #           JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
+  #               --export_dir=/data/testdata/sp1-groth16/ \
+  #               --deterministic --circuit=sp1 \
+  #               --output=${{ github.workspace }}/groth16_cpu_benchmark_results.json
+  #         device: cpu
+  #         results_file: groth16_cpu_benchmark_results.json
+  #         results_dir: benchmark_data_groth16_cpu
+  #         baseline_path: benchmark_data_groth16_cpu/baseline.json
+  #         anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+  #         dashboard_token: ${{ secrets.DASHBOARD_TOKEN }}
+  #         slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
+  #         store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
+  #
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: benchmark-groth16-cpu
+  #         path: groth16_cpu_benchmark_results.json
+  #         retention-days: 90
 
   primitives-gpu:
-    needs: groth16-cpu
+    needs: groth16-gpu
     runs-on: [self-hosted, rabbitsnark-py]
     steps:
       - uses: actions/checkout@v4
