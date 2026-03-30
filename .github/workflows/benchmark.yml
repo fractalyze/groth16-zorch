@@ -56,7 +56,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v6
+      - uses: fractalyze/benchmark-action@v7
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
@@ -89,7 +89,7 @@ jobs:
   #         clean: false
   #         ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
   #
-  #     - uses: fractalyze/benchmark-action@v6
+  #     - uses: fractalyze/benchmark-action@v7
   #       with:
   #         benchmark_cmd: |
   #           JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
@@ -121,7 +121,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v6
+      - uses: fractalyze/benchmark-action@v7
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
@@ -152,7 +152,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v6
+      - uses: fractalyze/benchmark-action@v7
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
