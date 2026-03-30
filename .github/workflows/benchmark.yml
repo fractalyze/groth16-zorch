@@ -60,22 +60,15 @@ jobs:
     if: inputs.pr_number != ''
     runs-on: ubuntu-latest
     outputs:
-      comment_id: ${{ steps.comment.outputs.comment_id }}
+      comment_id: ${{ steps.notify.outputs.comment_id }}
     steps:
-      - name: Post PR comment with run link
-        id: comment
-        run: |
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          BODY="**Benchmark started** :rocket:
-
-          Follow progress: [Actions run #${{ github.run_id }}](${RUN_URL})
-
-          _Triggered by @${{ inputs.triggered_by || github.triggering_actor }}_"
-          gh api repos/${{ github.repository }}/issues/${{ inputs.pr_number }}/comments \
-            -f body="${BODY}" \
-            --jq '.id' | xargs -I{} echo "comment_id={}" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: fractalyze/benchmark-action/notify@v8
+        id: notify
+        with:
+          mode: start
+          pr_number: ${{ inputs.pr_number }}
+          triggered_by: ${{ inputs.triggered_by || github.triggering_actor }}
+          github_pat: ${{ secrets.ISSUE_REACTOR_GH_PAT }}
 
   groth16-gpu:
     runs-on: [self-hosted, rabbitsnark-py]
@@ -86,7 +79,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v7
+      - uses: fractalyze/benchmark-action@v8
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
@@ -119,7 +112,7 @@ jobs:
   #         clean: false
   #         ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
   #
-  #     - uses: fractalyze/benchmark-action@v7
+  #     - uses: fractalyze/benchmark-action@v8
   #       with:
   #         benchmark_cmd: |
   #           JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
@@ -151,7 +144,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v7
+      - uses: fractalyze/benchmark-action@v8
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
@@ -182,7 +175,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v7
+      - uses: fractalyze/benchmark-action@v8
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
@@ -205,7 +198,7 @@ jobs:
 
   notify-end:
     if: always() && inputs.pr_number != ''
-    needs: [notify-start, primitives-cpu]
+    needs: [notify-start, groth16-gpu, primitives-gpu, primitives-cpu]
     runs-on: ubuntu-latest
     steps:
       - name: Determine overall status
@@ -225,83 +218,14 @@ jobs:
             echo "label=completed successfully" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Edit PR comment with final status
-        if: needs.notify-start.outputs.comment_id != ''
-        run: |
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          BODY="**Benchmark ${{ steps.status.outputs.label }}** ${{ steps.status.outputs.emoji }}
-
-          Results: [Actions run #${{ github.run_id }}](${RUN_URL})
-
-          _Triggered by @${{ inputs.triggered_by || github.triggering_actor }}_"
-          gh api repos/${{ github.repository }}/issues/comments/${{ needs.notify-start.outputs.comment_id }} \
-            -X PATCH -f body="${BODY}"
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Send Slack DM to triggering user
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          GITHUB_SLACK_USER_MAP: ${{ secrets.GITHUB_SLACK_USER_MAP }}
-          GITHUB_USER: ${{ inputs.triggered_by || github.triggering_actor }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          PR_URL: ${{ github.server_url }}/${{ github.repository }}/pull/${{ inputs.pr_number }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          REPO_NAME: ${{ github.repository }}
-          STATUS: ${{ steps.status.outputs.label }}
-          EMOJI: ${{ steps.status.outputs.emoji }}
-        run: |
-          if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$GITHUB_SLACK_USER_MAP" ]; then
-            echo "Slack bot token or user map not set, skipping DM"
-            exit 0
-          fi
-
-          python3 - <<'PYEOF'
-          import json, os, urllib.request
-
-          token = os.environ["SLACK_BOT_TOKEN"]
-          user_map = json.loads(os.environ["GITHUB_SLACK_USER_MAP"])
-          github_user = os.environ["GITHUB_USER"]
-          slack_user_id = user_map.get(github_user)
-
-          if not slack_user_id:
-              print(f"No Slack mapping for '{github_user}', skipping DM")
-              raise SystemExit(0)
-
-          def slack_api(method, payload):
-              req = urllib.request.Request(
-                  f"https://slack.com/api/{method}",
-                  data=json.dumps(payload).encode(),
-                  headers={
-                      "Authorization": f"Bearer {token}",
-                      "Content-Type": "application/json",
-                  },
-              )
-              with urllib.request.urlopen(req) as resp:
-                  return json.loads(resp.read())
-
-          dm = slack_api("conversations.open", {"users": slack_user_id})
-          if not dm.get("ok"):
-              print(f"Failed to open DM: {dm.get('error')}")
-              raise SystemExit(0)
-
-          channel = dm["channel"]["id"]
-          emoji = os.environ.get("EMOJI", "")
-          status = os.environ.get("STATUS", "")
-          repo = os.environ.get("REPO_NAME", "")
-          pr_url = os.environ.get("PR_URL", "")
-          pr_number = os.environ.get("PR_NUMBER", "")
-          run_url = os.environ.get("RUN_URL", "")
-
-          text = f"{emoji} *Benchmark {status}*\n*Repo:* {repo}\n*PR:* <{pr_url}|#{pr_number}>\n*Run:* <{run_url}|View results>"
-          result = slack_api("chat.postMessage", {
-              "channel": channel,
-              "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}],
-              "text": f"Benchmark {status}",
-          })
-
-          if result.get("ok"):
-              print(f"Slack DM sent to {slack_user_id}")
-          else:
-              print(f"Slack DM failed: {result.get('error')}")
-          PYEOF
+      - uses: fractalyze/benchmark-action/notify@v8
+        with:
+          mode: end
+          pr_number: ${{ inputs.pr_number }}
+          triggered_by: ${{ inputs.triggered_by || github.triggering_actor }}
+          github_pat: ${{ secrets.ISSUE_REACTOR_GH_PAT }}
+          comment_id: ${{ needs.notify-start.outputs.comment_id }}
+          status: ${{ steps.status.outputs.label }}
+          status_emoji: ${{ steps.status.outputs.emoji }}
+          slack_bot_token: ${{ secrets.BENCHMARK_NOTIFIER_SLACK_BOT_TOKEN }}
+          github_slack_user_map: ${{ vars.SLACK_USER_MAP }}
