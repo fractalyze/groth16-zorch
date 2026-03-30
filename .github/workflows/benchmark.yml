@@ -18,11 +18,16 @@ permissions:
   contents: read
   actions: read
   checks: read
+  issues: write
 
 on:
   workflow_dispatch:
     inputs:
       pr_number:
+        type: string
+        required: false
+        default: ""
+      triggered_by:
         type: string
         required: false
         default: ""
@@ -39,6 +44,10 @@ on:
         type: string
         required: false
         default: ""
+      triggered_by:
+        type: string
+        required: false
+        default: ""
 
 # Cancel in-progress runs for PRs (same head branch), but never cancel
 # pushes to main so that every merge gets a full CI run.
@@ -47,6 +56,27 @@ concurrency:
   cancel-in-progress: ${{ inputs.pr_number != '' || github.ref != 'refs/heads/main' }}
 
 jobs:
+  notify-start:
+    if: inputs.pr_number != ''
+    runs-on: ubuntu-latest
+    outputs:
+      comment_id: ${{ steps.comment.outputs.comment_id }}
+    steps:
+      - name: Post PR comment with run link
+        id: comment
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY="**Benchmark started** :rocket:
+
+          Follow progress: [Actions run #${{ github.run_id }}](${RUN_URL})
+
+          _Triggered by @${{ inputs.triggered_by || github.triggering_actor }}_"
+          gh api repos/${{ github.repository }}/issues/${{ inputs.pr_number }}/comments \
+            -f body="${BODY}" \
+            --jq '.id' | xargs -I{} echo "comment_id={}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   groth16-gpu:
     runs-on: [self-hosted, rabbitsnark-py]
     steps:
@@ -172,3 +202,106 @@ jobs:
           name: benchmark-primitives-cpu
           path: primitives_cpu_benchmark_results.json
           retention-days: 90
+
+  notify-end:
+    if: always() && inputs.pr_number != ''
+    needs: [notify-start, primitives-cpu]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine overall status
+        id: status
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ]; then
+            echo "outcome=failure" >> "$GITHUB_OUTPUT"
+            echo "emoji=:x:" >> "$GITHUB_OUTPUT"
+            echo "label=failed" >> "$GITHUB_OUTPUT"
+          elif [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "outcome=cancelled" >> "$GITHUB_OUTPUT"
+            echo "emoji=:no_entry_sign:" >> "$GITHUB_OUTPUT"
+            echo "label=cancelled" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome=success" >> "$GITHUB_OUTPUT"
+            echo "emoji=:white_check_mark:" >> "$GITHUB_OUTPUT"
+            echo "label=completed successfully" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Edit PR comment with final status
+        if: needs.notify-start.outputs.comment_id != ''
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY="**Benchmark ${{ steps.status.outputs.label }}** ${{ steps.status.outputs.emoji }}
+
+          Results: [Actions run #${{ github.run_id }}](${RUN_URL})
+
+          _Triggered by @${{ inputs.triggered_by || github.triggering_actor }}_"
+          gh api repos/${{ github.repository }}/issues/comments/${{ needs.notify-start.outputs.comment_id }} \
+            -X PATCH -f body="${BODY}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Send Slack DM to triggering user
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GITHUB_SLACK_USER_MAP: ${{ secrets.GITHUB_SLACK_USER_MAP }}
+          GITHUB_USER: ${{ inputs.triggered_by || github.triggering_actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR_URL: ${{ github.server_url }}/${{ github.repository }}/pull/${{ inputs.pr_number }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          REPO_NAME: ${{ github.repository }}
+          STATUS: ${{ steps.status.outputs.label }}
+          EMOJI: ${{ steps.status.outputs.emoji }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$GITHUB_SLACK_USER_MAP" ]; then
+            echo "Slack bot token or user map not set, skipping DM"
+            exit 0
+          fi
+
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+
+          token = os.environ["SLACK_BOT_TOKEN"]
+          user_map = json.loads(os.environ["GITHUB_SLACK_USER_MAP"])
+          github_user = os.environ["GITHUB_USER"]
+          slack_user_id = user_map.get(github_user)
+
+          if not slack_user_id:
+              print(f"No Slack mapping for '{github_user}', skipping DM")
+              raise SystemExit(0)
+
+          def slack_api(method, payload):
+              req = urllib.request.Request(
+                  f"https://slack.com/api/{method}",
+                  data=json.dumps(payload).encode(),
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json",
+                  },
+              )
+              with urllib.request.urlopen(req) as resp:
+                  return json.loads(resp.read())
+
+          dm = slack_api("conversations.open", {"users": slack_user_id})
+          if not dm.get("ok"):
+              print(f"Failed to open DM: {dm.get('error')}")
+              raise SystemExit(0)
+
+          channel = dm["channel"]["id"]
+          emoji = os.environ.get("EMOJI", "")
+          status = os.environ.get("STATUS", "")
+          repo = os.environ.get("REPO_NAME", "")
+          pr_url = os.environ.get("PR_URL", "")
+          pr_number = os.environ.get("PR_NUMBER", "")
+          run_url = os.environ.get("RUN_URL", "")
+
+          text = f"{emoji} *Benchmark {status}*\n*Repo:* {repo}\n*PR:* <{pr_url}|#{pr_number}>\n*Run:* <{run_url}|View results>"
+          result = slack_api("chat.postMessage", {
+              "channel": channel,
+              "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}],
+              "text": f"Benchmark {status}",
+          })
+
+          if result.get("ok"):
+              print(f"Slack DM sent to {slack_user_id}")
+          else:
+              print(f"Slack DM failed: {result.get('error')}")
+          PYEOF

@@ -22,6 +22,7 @@ name: "Benchmark (trigger)"
 
 permissions:
   actions: write
+  issues: write
   pull-requests: read
 
 on:
@@ -35,6 +36,14 @@ jobs:
       github.event.comment.body == '/benchmark'
     runs-on: ubuntu-latest
     steps:
+      - name: Add eyes reaction
+        continue-on-error: true
+        run: |
+          gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content=eyes
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Get PR head ref
         id: pr
         run: |
@@ -48,6 +57,7 @@ jobs:
           gh workflow run benchmark.yml \
             --repo ${{ github.repository }} \
             --ref "${{ steps.pr.outputs.ref }}" \
-            -f pr_number=${{ github.event.issue.number }}
+            -f pr_number=${{ github.event.issue.number }} \
+            -f triggered_by=${{ github.actor }}
         env:
           GH_TOKEN: ${{ github.token }}
