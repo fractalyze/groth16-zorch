@@ -18,7 +18,7 @@
 Separates one-time circuit compilation from per-proof computation:
 
     compiled = compile_circom(zkey)       # or compile_gnark(data)
-    proof, signals = compiled.prove(z_std, az_mont, bz_mont, public_signals)
+    proof, signals = compiled.prove(z, az_mont, bz_mont, public_signals)
 
 Architecture:
     compile_circom(zkey) / compile_gnark(data) -> CompiledProver
@@ -27,7 +27,7 @@ Architecture:
     |-- Point arrays (affine)
     +-- VK / Delta points (affine scalars)
 
-    CompiledProver.prove(z_std, az_mont, bz_mont, public_signals)
+    CompiledProver.prove(z, az_mont, bz_mont, public_signals)
     |-- ZK blinding: r, s, r*s generation
     +-- Phase 1: _prove_ntt(config, ...)  <- JIT
     |  |-- Cz = Az ⊙ Bz (Hadamard)
@@ -199,7 +199,7 @@ class CompiledProver:
 
     def prove(
         self,
-        z_std: Array,
+        z: Array,
         az_mont: Array,
         bz_mont: Array,
         public_signals: list[str],
@@ -209,11 +209,10 @@ class CompiledProver:
     ) -> tuple[Groth16Proof, list[str]]:
         """Generate a Groth16 proof.
 
-        Caller prepares z_std, az_mont, bz_mont, and public_signals
-        regardless of circuit format (circom / gnark).
-
         Args:
-            z_std: Full witness in standard form (bn254_sf).
+            z: Full witness — accepts either Montgomery (bn254_sf_mont) or
+                standard form (bn254_sf). Montgomery inputs are converted to
+                standard form on GPU, avoiding a CPU roundtrip.
             az_mont: Pre-computed A*z in Montgomery form (bn254_sf_mont).
             bz_mont: Pre-computed B*z in Montgomery form (bn254_sf_mont).
             public_signals: Public signals as decimal string list.
@@ -224,6 +223,8 @@ class CompiledProver:
         Returns:
             Tuple of (proof, public_signals).
         """
+        from zk_dtypes import bn254_sf
+
         if no_zk:
             r_int, s_int = 0, 0
         elif deterministic:
@@ -236,6 +237,14 @@ class CompiledProver:
         s_val = jnp.array(s_int, dtype=bn254_sf)
         neg_rs = -(bn254_sf(r_int) * bn254_sf(s_int))
         neg_rs_val = jnp.array(neg_rs, dtype=bn254_sf)
+
+        # Auto-detect witness form and convert to standard if needed.
+        if not isinstance(z, jnp.ndarray):
+            z = jnp.array(z)
+        if z.dtype == bn254_sf_mont:
+            z_std = lax.convert_element_type(z, bn254_sf)
+        else:
+            z_std = z
 
         pi_a, pi_b2, pi_c = self._run_prove(
             z_std,

@@ -42,52 +42,6 @@ from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
 from rabbitsnark.gnark import load_gnark_export, load_solver_data
 from rabbitsnark.groth16.prover import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
-from rabbitsnark.r1cs_solver import solve_and_compute
-
-_SOLUTION_CACHE_DIR = Path("/tmp/rabbitsnark-cache")
-
-
-def _cache_key(export_dir: Path) -> str:
-    """Hash witness_full.bin to derive a stable cache key."""
-    witness_path = export_dir / "witness_full.bin"
-    if not witness_path.exists():
-        return ""
-    h = hashlib.sha256(witness_path.read_bytes()).hexdigest()[:16]
-    return h
-
-
-def _save_solution_cache(
-    cache_dir: Path,
-    key: str,
-    z_std: np.ndarray,
-    az_mont: jnp.ndarray,
-    bz_mont: jnp.ndarray,
-) -> None:
-    """Save solution vectors as raw bytes (ZK dtypes don't roundtrip via npy)."""
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    prefix = cache_dir / key
-    np.asarray(z_std).view(np.uint8).tofile(f"{prefix}_z_std.bin")
-    np.array(az_mont).view(np.uint8).tofile(f"{prefix}_az.bin")
-    np.array(bz_mont).view(np.uint8).tofile(f"{prefix}_bz.bin")
-
-
-def _load_solution_cache(
-    cache_dir: Path, key: str
-) -> tuple[np.ndarray, jnp.ndarray, jnp.ndarray] | None:
-    prefix = cache_dir / key
-    paths = [f"{prefix}_{s}.bin" for s in ("z_std", "az", "bz")]
-    if not all(Path(p).exists() for p in paths):
-        return None
-    from zk_dtypes import bn254_sf
-
-    z_std = jnp.array(np.fromfile(paths[0], dtype=np.uint8).view(np.dtype(bn254_sf)))
-    az_mont = jnp.array(
-        np.fromfile(paths[1], dtype=np.uint8).view(np.dtype(bn254_sf_mont))
-    )
-    bz_mont = jnp.array(
-        np.fromfile(paths[2], dtype=np.uint8).view(np.dtype(bn254_sf_mont))
-    )
-    return z_std, az_mont, bz_mont
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -127,6 +81,11 @@ class Groth16Benchmark(JaxBenchmark):
             default="sp1",
             help="Circuit name for metadata (default: sp1)",
         )
+        parser.add_argument(
+            "--no-solver",
+            action="store_true",
+            help="Skip solver benchmark (saves ~10 GB memory)",
+        )
 
     def get_ops(self, args: argparse.Namespace) -> Iterable[BenchmarkOp]:
         export_dir = Path(args.export_dir)
@@ -148,40 +107,90 @@ class Groth16Benchmark(JaxBenchmark):
         t_compile = time.perf_counter() - t0
         print(f"Compile: {t_compile:.1f}s")
 
-        print("\nSolving witness + computing Az/Bz...")
-        t0 = time.perf_counter()
-        cache_key = _cache_key(export_dir)
-        cached = (
-            _load_solution_cache(_SOLUTION_CACHE_DIR, cache_key) if cache_key else None
+        log_n = int(math.log2(data.domain_size))
+        witness_path = export_dir / "witness_full.bin"
+        input_hash = _hash_bytes(
+            witness_path.read_bytes() if witness_path.exists() else b""
         )
-        if cached is not None:
-            z_std, az_mont, bz_mont = cached
-            t_prep = time.perf_counter() - t0
-            print(f"Solution prep: {t_prep:.1f}s (cached)")
-        else:
-            # Defer solver loading to cache-miss path — CSR matrices are ~10 GB.
+        metadata = {
+            "field": "bn254",
+            "degree": str(log_n),
+            "circuit": args.circuit,
+            "constraints": str(data.num_constraints),
+        }
+
+        # --- Solver benchmark (solve_witness only, excludes compute_abc) ---
+        if not args.no_solver:
+            from rabbitsnark.r1cs_solver import solve_witness
+
+            print("\nLoading solver data...")
+            t0 = time.perf_counter()
             solver = load_solver_data(export_dir)
-            z_std, az_mont, bz_mont = solve_and_compute(data.witness_full, solver)
-            del solver  # Free ~10 GB CSR matrices before proving
-            t_prep = time.perf_counter() - t0
-            print(f"Solution prep: {t_prep:.1f}s")
-            if cache_key:
-                _save_solution_cache(
-                    _SOLUTION_CACHE_DIR, cache_key, z_std, az_mont, bz_mont
-                )
-                print(f"  → cached to {_SOLUTION_CACHE_DIR / cache_key}")
+            t_solver_load = time.perf_counter() - t0
+            print(f"Solver data load: {t_solver_load:.1f}s")
+
+            # Reference solution for verification.
+            ref_witness = solve_witness(data.witness_full, solver)
+            ref_hash = _hash_bytes(ref_witness.tobytes())
+
+            solve_last = {}
+
+            def solve_fn():
+                w = solve_witness(data.witness_full, solver)
+                solve_last["witness"] = w
+                return w
+
+            def solve_verify_fn():
+                return _hash_bytes(solve_last["witness"].tobytes()) == ref_hash
+
+            yield BenchmarkOp(
+                name="groth16_sp1_verifier_solver",
+                fn=solve_fn,
+                metadata=metadata,
+                input_hash=input_hash,
+                output_hash_fn=lambda: _hash_bytes(solve_last["witness"].tobytes()),
+                verify_fn=solve_verify_fn,
+            )
+
+            del solver  # Free ~10 GB CSR matrices before proving.
+
+        # --- Prove benchmark (compute_abc + NTT + MSM + EC) ---
+        # compute_abc (SpMV) included to match gnark's Prove() scope.
+        from rabbitsnark.gnark.compute_abc import load_csr_matrices
+        from rabbitsnark.r1cs_solver import compute_abc
+
+        print("\nLoading CSR matrices for prove...")
+        t0 = time.perf_counter()
+        csr = load_csr_matrices(export_dir)
+        t_csr = time.perf_counter() - t0
+        print(f"CSR load: {t_csr:.1f}s")
+
+        # z_std needed only for public_signals extraction (one-time).
+        print("Preparing witness...")
+        t0 = time.perf_counter()
+        from jax import lax
+        from zk_dtypes import bn254_sf
+
+        z_mont = jnp.array(data.witness_full, dtype=bn254_sf_mont)
+        z_std = np.asarray(lax.convert_element_type(z_mont, bn254_sf))
+        t_prep = time.perf_counter() - t0
+        print(f"Witness conversion: {t_prep:.1f}s")
 
         public_signals = [str(int(z_std[i])) for i in range(compiled.config.num_public)]
         vk = VerificationKey.from_gnark(data)
+        witness_mont = data.witness_full
 
         # Mutable container to capture the last proof for verify_fn.
         last = {}
 
         def prove_fn():
+            az, bz = compute_abc(
+                witness_mont, csr, data.num_constraints, data.domain_size
+            )
             proof, pub = compiled.prove(
-                z_std,
-                az_mont,
-                bz_mont,
+                z_mont,
+                az,
+                bz,
                 public_signals,
                 deterministic=args.deterministic,
             )
@@ -192,21 +201,10 @@ class Groth16Benchmark(JaxBenchmark):
         def verify_fn():
             return verify(vk, last["proof"], last["pub"])
 
-        log_n = int(math.log2(data.domain_size))
-        witness_path = export_dir / "witness_full.bin"
-        input_hash = _hash_bytes(
-            witness_path.read_bytes() if witness_path.exists() else b""
-        )
-
         yield BenchmarkOp(
-            name="groth16",
+            name="groth16_sp1_verifier",
             fn=prove_fn,
-            metadata={
-                "field": "bn254",
-                "degree": str(log_n),
-                "circuit": args.circuit,
-                "constraints": str(data.num_constraints),
-            },
+            metadata=metadata,
             input_hash=input_hash,
             output_hash_fn=lambda: _proof_hash(last["proof"]),
             verify_fn=verify_fn,
