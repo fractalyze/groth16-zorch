@@ -54,9 +54,13 @@ class TestCircomE2ECircuitProve(absltest.TestCase):
         witness = calc.compute_witness(inputs, w2s)
 
         # witness bytes are standard form (from_mont applied in calculator)
+        from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
+
+        _, coefficients = zkey_to_terms(self.zkey)
         self.az_mont, self.bz_mont = compute_abc(
             witness,
-            self.compiled.csr,
+            self.compiled.terms,
+            coefficients,
             self.compiled.domain_size,
             self.compiled.domain_size,
         )

@@ -69,8 +69,8 @@ py_library(
 )
 
 py_library(
-    name = "circom_zkey_to_csr",
-    srcs = ["circom/zkey_to_csr.py"],
+    name = "circom_zkey_to_terms",
+    srcs = ["circom/zkey_to_terms.py"],
     deps = [
         ":circom_zkey",
         ":r1cs_solver",
@@ -116,7 +116,7 @@ py_library(
     ],
     deps = [
         ":circom_zkey",
-        ":circom_zkey_to_csr",
+        ":circom_zkey_to_terms",
         ":r1cs_solver",
         "@pypi//jax",
         "@pypi//numpy",

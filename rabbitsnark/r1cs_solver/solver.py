@@ -107,38 +107,33 @@ def _load_library() -> ctypes.CDLL:
         lib_path = _find_runfiles_lib() or str(_DEFAULT_LIB_PATH)
     _lib_cache = ctypes.CDLL(lib_path)
 
-    # compute_abc: 13 memrefs + 1 scalar
+    # compute_abc: 11 memrefs + 1 scalar
     _lib_cache._mlir_ciface_compute_abc.restype = None
     _lib_cache._mlir_ciface_compute_abc.argtypes = [
         _REF_PTR,  # witness
+        _REF_PTR,  # coeff_table
         _REF_PTR,
+        _REF_PTR,  # A offsets, terms
         _REF_PTR,
-        _REF_PTR,  # A CSR
+        _REF_PTR,  # B offsets, terms
         _REF_PTR,
-        _REF_PTR,
-        _REF_PTR,  # B CSR
-        _REF_PTR,
-        _REF_PTR,
-        _REF_PTR,  # C CSR
+        _REF_PTR,  # C offsets, terms
         _REF_PTR,
         _REF_PTR,
         _REF_PTR,  # az, bz, cz
         ctypes.c_int64,  # num_constraints
     ]
 
-    # solve_r1cs: 22 memrefs + 2 scalars
+    # solve_r1cs: 20 memrefs + 2 scalars
     _lib_cache._mlir_ciface_solve_r1cs.restype = None
     _lib_cache._mlir_ciface_solve_r1cs.argtypes = [
         _REF_PTR,  # witness (in/out)
         _REF_PTR,
+        _REF_PTR,  # A offsets, terms
         _REF_PTR,
-        _REF_PTR,  # A CSR
+        _REF_PTR,  # B offsets, terms
         _REF_PTR,
-        _REF_PTR,
-        _REF_PTR,  # B CSR
-        _REF_PTR,
-        _REF_PTR,
-        _REF_PTR,  # C CSR
+        _REF_PTR,  # C offsets, terms
         _REF_PTR,
         _REF_PTR,
         _REF_PTR,  # unk_side, unk_inv_coeff, target_idx
@@ -169,27 +164,29 @@ def _load_library() -> ctypes.CDLL:
 
 
 @dataclass
-class CSRMatrices:
-    """CSR representation of R1CS A, B, C matrices."""
+class TermMatrices:
+    """Term-based representation of R1CS A, B, C matrices.
 
-    a_indptr: np.ndarray  # (num_constraints + 1,) int64
-    a_indices: np.ndarray  # (nnz_a,) int32
-    a_values: np.ndarray  # (nnz_a, 32) uint8 — raw field element bytes
+    Each term is a (coeff_id: u32, wire_id: i32) pair referencing the shared
+    coefficient table. This reduces memory from ~10 GB (32-byte CSR values) to
+    ~2 GB (8-byte terms).
+    """
 
-    b_indptr: np.ndarray
-    b_indices: np.ndarray
-    b_values: np.ndarray
+    a_offsets: np.ndarray  # (num_constraints + 1,) int64
+    a_terms: np.ndarray  # (nnz_a * 2,) int32 — interleaved (coeff_id, wire_id)
 
-    c_indptr: np.ndarray
-    c_indices: np.ndarray
-    c_values: np.ndarray
+    b_offsets: np.ndarray
+    b_terms: np.ndarray
+
+    c_offsets: np.ndarray
+    c_terms: np.ndarray
 
 
 @dataclass
 class SolverData:
     """All data needed for native R1CS witness solving + Az/Bz computation."""
 
-    csr: CSRMatrices
+    terms: TermMatrices
 
     # Unknown info per constraint
     unk_side: np.ndarray  # (num_constraints,) uint8
@@ -246,7 +243,7 @@ def solve_witness(
         (num_wires,) bn254_sf_mont numpy array with all wires solved.
     """
     lib = _load_library()
-    csr = solver.csr
+    tm = solver.terms
 
     # Build witness buffer: copy all provided wire values (public+secret at
     # minimum; full witness if available), then let solver fill in the rest.
@@ -264,15 +261,12 @@ def solve_witness(
 
     # Build all memrefs
     mr_w = _make_memref(witness_buf)
-    mr_a_indptr = _make_memref(csr.a_indptr)
-    mr_a_indices = _make_memref(csr.a_indices)
-    mr_a_values = _make_memref(csr.a_values.view(np.uint8).ravel())
-    mr_b_indptr = _make_memref(csr.b_indptr)
-    mr_b_indices = _make_memref(csr.b_indices)
-    mr_b_values = _make_memref(csr.b_values.view(np.uint8).ravel())
-    mr_c_indptr = _make_memref(csr.c_indptr)
-    mr_c_indices = _make_memref(csr.c_indices)
-    mr_c_values = _make_memref(csr.c_values.view(np.uint8).ravel())
+    mr_a_offsets = _make_memref(tm.a_offsets)
+    mr_a_terms = _make_memref(tm.a_terms)
+    mr_b_offsets = _make_memref(tm.b_offsets)
+    mr_b_terms = _make_memref(tm.b_terms)
+    mr_c_offsets = _make_memref(tm.c_offsets)
+    mr_c_terms = _make_memref(tm.c_terms)
     mr_unk_side = _make_memref(solver.unk_side)
     mr_unk_inv_coeff = _make_memref(solver.unk_inv_coeff.view(np.uint8).ravel())
     mr_target_idx = _make_memref(solver.target_idx)
@@ -297,15 +291,12 @@ def solve_witness(
 
     lib._mlir_ciface_solve_r1cs(
         ctypes.byref(mr_w),
-        ctypes.byref(mr_a_indptr),
-        ctypes.byref(mr_a_indices),
-        ctypes.byref(mr_a_values),
-        ctypes.byref(mr_b_indptr),
-        ctypes.byref(mr_b_indices),
-        ctypes.byref(mr_b_values),
-        ctypes.byref(mr_c_indptr),
-        ctypes.byref(mr_c_indices),
-        ctypes.byref(mr_c_values),
+        ctypes.byref(mr_a_offsets),
+        ctypes.byref(mr_a_terms),
+        ctypes.byref(mr_b_offsets),
+        ctypes.byref(mr_b_terms),
+        ctypes.byref(mr_c_offsets),
+        ctypes.byref(mr_c_terms),
         ctypes.byref(mr_unk_side),
         ctypes.byref(mr_unk_inv_coeff),
         ctypes.byref(mr_target_idx),
@@ -332,76 +323,113 @@ def solve_witness(
 
 def compute_abc(
     witness: np.ndarray,
-    csr: CSRMatrices,
+    tm: TermMatrices,
+    coefficients: np.ndarray,
     num_constraints: int,
     domain_size: int,
+    *,
+    _bufs: dict | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Compute Az, Bz via native CSR SpMV and return as padded JAX arrays.
+    """Compute Az, Bz via native term-based evaluation.
 
     Args:
-        witness: (num_wires,) bn254_sf_mont numpy array.
-        csr: CSR matrices loaded by ``load_csr_matrices``.
+        witness: (num_wires,) bn254_sf_mont numpy array. Ignored when
+            ``_bufs`` is provided — the witness used is the one passed
+            to ``make_abc_buffers()`` during buffer creation.
+        tm: Term matrices loaded by ``load_term_matrices``.
+        coefficients: (num_coefficients, 32) uint8 — coefficient table.
         num_constraints: Number of R1CS constraints.
         domain_size: NTT domain size (power of 2, >= num_constraints).
+        _bufs: Optional pre-allocated buffer dict to avoid per-call allocation.
+            Created by ``make_abc_buffers()``. When provided, ``witness``
+            and ``coefficients`` are ignored in favor of the pre-flattened
+            buffers.
 
     Returns:
         Tuple of (az, bz) JAX arrays of shape (domain_size,) in Montgomery form.
     """
     lib = _load_library()
 
-    # Reinterpret witness raw bytes for native call (32B per element)
-    w_flat = np.ascontiguousarray(witness.view(np.uint8)).ravel()
+    # Reuse pre-allocated buffers if provided, else allocate.
+    if _bufs is not None:
+        w_flat = _bufs["w_flat"]
+        az_buf = _bufs["az_buf"]
+        bz_buf = _bufs["bz_buf"]
+        cz_buf = _bufs["cz_buf"]
+        coeff_flat = _bufs["coeff_flat"]
+        # Zero the output region (native writes only [0:num_constraints])
+        az_buf[: num_constraints * FIELD_ELEM_SIZE] = 0
+        bz_buf[: num_constraints * FIELD_ELEM_SIZE] = 0
+        cz_buf[: num_constraints * FIELD_ELEM_SIZE] = 0
+    else:
+        w_flat = np.ascontiguousarray(witness.view(np.uint8)).ravel()
+        az_buf = np.zeros(domain_size * FIELD_ELEM_SIZE, dtype=np.uint8)
+        bz_buf = np.zeros(domain_size * FIELD_ELEM_SIZE, dtype=np.uint8)
+        cz_buf = np.zeros(domain_size * FIELD_ELEM_SIZE, dtype=np.uint8)
+        coeff_flat = (
+            coefficients.view(np.uint8).ravel()
+            if coefficients.size > 0
+            else np.zeros(FIELD_ELEM_SIZE, dtype=np.uint8)
+        )
 
-    # Allocate output buffers (num_constraints elements, 32B each)
-    az_buf = np.zeros(num_constraints * FIELD_ELEM_SIZE, dtype=np.uint8)
-    bz_buf = np.zeros(num_constraints * FIELD_ELEM_SIZE, dtype=np.uint8)
-    cz_buf = np.zeros(num_constraints * FIELD_ELEM_SIZE, dtype=np.uint8)
-
-    # Build memrefs
     mr_w = _make_memref(w_flat)
-    mr_a_indptr = _make_memref(csr.a_indptr)
-    mr_a_indices = _make_memref(csr.a_indices)
-    mr_a_values = _make_memref(csr.a_values.view(np.uint8).ravel())
-    mr_b_indptr = _make_memref(csr.b_indptr)
-    mr_b_indices = _make_memref(csr.b_indices)
-    mr_b_values = _make_memref(csr.b_values.view(np.uint8).ravel())
-    mr_c_indptr = _make_memref(csr.c_indptr)
-    mr_c_indices = _make_memref(csr.c_indices)
-    mr_c_values = _make_memref(csr.c_values.view(np.uint8).ravel())
+    mr_coeff = _make_memref(coeff_flat)
+    mr_a_offsets = _make_memref(tm.a_offsets)
+    mr_a_terms = _make_memref(tm.a_terms)
+    mr_b_offsets = _make_memref(tm.b_offsets)
+    mr_b_terms = _make_memref(tm.b_terms)
+    mr_c_offsets = _make_memref(tm.c_offsets)
+    mr_c_terms = _make_memref(tm.c_terms)
     mr_az = _make_memref(az_buf)
     mr_bz = _make_memref(bz_buf)
     mr_cz = _make_memref(cz_buf)
 
     lib._mlir_ciface_compute_abc(
         ctypes.byref(mr_w),
-        ctypes.byref(mr_a_indptr),
-        ctypes.byref(mr_a_indices),
-        ctypes.byref(mr_a_values),
-        ctypes.byref(mr_b_indptr),
-        ctypes.byref(mr_b_indices),
-        ctypes.byref(mr_b_values),
-        ctypes.byref(mr_c_indptr),
-        ctypes.byref(mr_c_indices),
-        ctypes.byref(mr_c_values),
+        ctypes.byref(mr_coeff),
+        ctypes.byref(mr_a_offsets),
+        ctypes.byref(mr_a_terms),
+        ctypes.byref(mr_b_offsets),
+        ctypes.byref(mr_b_terms),
+        ctypes.byref(mr_c_offsets),
+        ctypes.byref(mr_c_terms),
         ctypes.byref(mr_az),
         ctypes.byref(mr_bz),
         ctypes.byref(mr_cz),
         ctypes.c_int64(num_constraints),
     )
 
-    # Reinterpret output as bn254_sf_mont and pad to domain_size
+    # View as field elements — already padded to domain_size (zeros beyond nc).
     az_mont = az_buf.view(_MONT_DT)
     bz_mont = bz_buf.view(_MONT_DT)
-
-    if num_constraints < domain_size:
-        pad = np.zeros(domain_size - num_constraints, dtype=_MONT_DT)
-        az_mont = np.concatenate([az_mont, pad])
-        bz_mont = np.concatenate([bz_mont, pad])
 
     return (
         jnp.array(az_mont),
         jnp.array(bz_mont),
     )
+
+
+def make_abc_buffers(
+    witness: np.ndarray,
+    coefficients: np.ndarray,
+    domain_size: int,
+) -> dict:
+    """Pre-allocate reusable buffers for compute_abc to avoid per-call copies.
+
+    Call once during setup, then pass to ``compute_abc(_bufs=bufs)`` each
+    iteration. Eliminates ~3 GB of allocation + copy per call.
+    """
+    return {
+        "w_flat": np.ascontiguousarray(witness.view(np.uint8)).ravel(),
+        "az_buf": np.zeros(domain_size * FIELD_ELEM_SIZE, dtype=np.uint8),
+        "bz_buf": np.zeros(domain_size * FIELD_ELEM_SIZE, dtype=np.uint8),
+        "cz_buf": np.zeros(domain_size * FIELD_ELEM_SIZE, dtype=np.uint8),
+        "coeff_flat": (
+            coefficients.view(np.uint8).ravel()
+            if coefficients.size > 0
+            else np.zeros(FIELD_ELEM_SIZE, dtype=np.uint8)
+        ),
+    }
 
 
 def solve_and_compute(
@@ -432,7 +460,8 @@ def solve_and_compute(
         witness_full = solve_witness(witness_inputs, solver)
     az, bz = compute_abc(
         witness_full,
-        solver.csr,
+        solver.terms,
+        solver.coefficients,
         solver.num_constraints,
         solver.domain_size,
     )

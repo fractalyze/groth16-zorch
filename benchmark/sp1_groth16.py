@@ -155,15 +155,20 @@ class Groth16Benchmark(JaxBenchmark):
             del solver  # Free ~10 GB CSR matrices before proving.
 
         # --- Prove benchmark (compute_abc + NTT + MSM + EC) ---
-        # compute_abc (SpMV) included to match gnark's Prove() scope.
-        from rabbitsnark.gnark.compute_abc import load_csr_matrices
+        # compute_abc (term eval) included to match gnark's Prove() scope.
+        from rabbitsnark.gnark.compute_abc import (
+            _parse_coefficients,
+            load_term_matrices,
+        )
         from rabbitsnark.r1cs_solver import compute_abc
+        from rabbitsnark.r1cs_solver.solver import make_abc_buffers
 
-        print("\nLoading CSR matrices for prove...")
+        print("\nLoading term matrices for prove...")
         t0 = time.perf_counter()
-        csr = load_csr_matrices(export_dir)
-        t_csr = time.perf_counter() - t0
-        print(f"CSR load: {t_csr:.1f}s")
+        tm = load_term_matrices(export_dir)
+        coefficients = _parse_coefficients(export_dir / "r1cs_coefficients.bin")
+        t_load = time.perf_counter() - t0
+        print(f"Term load: {t_load:.1f}s")
 
         # z_std needed only for public_signals extraction (one-time).
         print("Preparing witness...")
@@ -178,14 +183,21 @@ class Groth16Benchmark(JaxBenchmark):
 
         public_signals = [str(int(z_std[i])) for i in range(compiled.config.num_public)]
         vk = VerificationKey.from_gnark(data)
-        witness_mont = data.witness_full
+
+        # Pre-allocate buffers to avoid ~3 GB alloc+copy per iteration.
+        abc_bufs = make_abc_buffers(data.witness_full, coefficients, data.domain_size)
 
         # Mutable container to capture the last proof for verify_fn.
         last = {}
 
         def prove_fn():
             az, bz = compute_abc(
-                witness_mont, csr, data.num_constraints, data.domain_size
+                data.witness_full,
+                tm,
+                coefficients,
+                data.num_constraints,
+                data.domain_size,
+                _bufs=abc_bufs,
             )
             proof, pub = compiled.prove(
                 z_mont,

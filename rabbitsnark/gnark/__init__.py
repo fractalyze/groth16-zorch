@@ -15,7 +15,7 @@
 
 """Gnark Groth16 support: load exported circuit data and prove via JAX."""
 
-from .compute_abc import load_csr_matrices, load_solver_data
+from .compute_abc import load_csr_matrices, load_solver_data, load_term_matrices
 from .loader import load_gnark_export
 from .types import GnarkProvingData
 
@@ -24,4 +24,5 @@ __all__ = [
     "load_csr_matrices",
     "load_gnark_export",
     "load_solver_data",
+    "load_term_matrices",
 ]

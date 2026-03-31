@@ -73,7 +73,6 @@ if TYPE_CHECKING:
     from rabbitsnark.circom.zkey.verifying_key import G1Point, G2Point
     from rabbitsnark.circom.zkey.zkey import ZKeyV1
     from rabbitsnark.gnark.types import GnarkProvingData
-    from rabbitsnark.r1cs_solver import CSRMatrices
 
 # Subgroup generators for NTT root of unity computation.
 # circom uses generator 7: root = 7^((p - 1) / n) mod p
@@ -128,8 +127,8 @@ class CompiledProver:
     # Delta points (affine scalars)
     delta_g1: Array  # bn254_g1_affine scalar
     delta_g2: Array  # bn254_g2_affine scalar
-    # CSR matrices for native compute_abc (built at compile time)
-    csr: CSRMatrices | None = None
+    # Term matrices for native compute_abc (built at compile time, circom only)
+    terms: "TermMatrices | None" = None
     domain_size: int = 0
     # Gnark-specific (None for circom — not computed)
     den: Array | None = None  # 1 / (g^n - 1), scalar bn254_sf_mont
@@ -272,12 +271,13 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
     Returns:
         Compiled prover ready for proof generation.
     """
-    from rabbitsnark.circom.zkey_to_csr import zkey_to_csr
 
     num_public = zkey.header_groth.num_public_inputs
     domain_size = zkey.domain_size
     log_n = int(math.log2(domain_size))
-    csr = zkey_to_csr(zkey)
+    from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
+
+    terms, _coefficients = zkey_to_terms(zkey)
     vk = zkey.verifying_key
 
     # Coset shift powers: [1, g, g², ..., g^(n - 1)] where g = ω₂ₙ
@@ -326,7 +326,7 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
         beta2=beta2,
         delta_g1=delta_g1,
         delta_g2=delta_g2,
-        csr=csr,
+        terms=terms,
         domain_size=domain_size,
         # den / inv_shift_powers not needed for circom
     )
