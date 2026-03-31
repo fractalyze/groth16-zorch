@@ -2,4 +2,7 @@
 
 self-hosted-runner:
   labels:
-    - rabbitsnark-py
+    - cpu
+    - gpu
+    - bench
+
