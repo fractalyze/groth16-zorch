@@ -21,8 +21,8 @@ Defines the r1cs_solver http_archive. Transitive deps are loaded from
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-R1CS_SOLVER_COMMIT = "e1a66bdefa418d145f11f270c6576f51ea5f785f"
-R1CS_SOLVER_SHA256 = "494d0d17d00f7e30a84849c0ed4db32586c8b57411b64dd34b6d8a8bb775f9bb"
+R1CS_SOLVER_COMMIT = "08c1a62de669b5067684392258ce14a67ba89029"
+R1CS_SOLVER_SHA256 = "9a19e758f3dbeaafcb5165c193534d834857fd88cc321a8b2b0eb822a8077302"
 
 def repo():
     """Define the r1cs_solver repository."""
