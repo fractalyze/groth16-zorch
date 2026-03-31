@@ -44,11 +44,15 @@ class TestCircomE2EProveVerify(absltest.TestCase):
         self.zkey = parse_zkey(test_data_dir / "multiplier_3.zkey")
         self.wtns = parse_wtns(test_data_dir / "multiplier_3.wtns")
         self.compiled = compile_circom(self.zkey)
-        # Bitcast witness std → mont, CSR values are aR² (double Montgomery).
+        # Bitcast witness std → mont, values are aR² (double Montgomery).
         witness_mont = self.wtns.data._witnesses.view(np.dtype(bn254_sf_mont))
+        from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
+
+        _, coefficients = zkey_to_terms(self.zkey)
         self.az_mont, self.bz_mont = compute_abc(
             witness_mont,
-            self.compiled.csr,
+            self.compiled.terms,
+            coefficients,
             self.compiled.domain_size,
             self.compiled.domain_size,
         )

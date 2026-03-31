@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rabbitsnark.r1cs_solver import CSRMatrices, SolverData
+from rabbitsnark.r1cs_solver import SolverData, TermMatrices
 
 from .loader import FIELD_ELEM_SIZE
 
@@ -38,43 +38,38 @@ _UNKNOWN_ENTRY_SIZE = 5  # 1B side + 4B wire_id
 # ---------------------------------------------------------------------------
 
 
-def load_csr_matrices(export_dir: str | Path) -> CSRMatrices:
-    """Load CSR matrices from binary files in the export directory.
+def load_term_matrices(export_dir: str | Path) -> TermMatrices:
+    """Load term-based R1CS matrices from binary files.
 
     Expected files per matrix (a, b, c):
-        r1cs_{a,b,c}_indptr.bin  — int64
-        r1cs_{a,b,c}_indices.bin — int32
-        r1cs_{a,b,c}_values.bin  — raw 32-byte field elements
+        r1cs_{a,b,c}_term_offsets.bin — int64[num_constraints+1]
+        r1cs_{a,b,c}_terms.bin       — int32[nnz*2] (coeff_id, wire_id pairs)
     """
     d = Path(export_dir)
 
-    def _load_csr(prefix: str):
-        indptr = np.fromfile(str(d / f"r1cs_{prefix}_indptr.bin"), dtype=np.int64)
-        indices = np.fromfile(str(d / f"r1cs_{prefix}_indices.bin"), dtype=np.int32)
-        raw = np.fromfile(str(d / f"r1cs_{prefix}_values.bin"), dtype=np.uint8)
-        nnz = raw.size // FIELD_ELEM_SIZE
-        values = (
-            raw.reshape(nnz, FIELD_ELEM_SIZE)
-            if nnz > 0
-            else raw.reshape(0, FIELD_ELEM_SIZE)
+    def _load_terms(prefix: str):
+        offsets = np.fromfile(
+            str(d / f"r1cs_{prefix}_term_offsets.bin"), dtype=np.int64
         )
-        return indptr, indices, values
+        terms = np.fromfile(str(d / f"r1cs_{prefix}_terms.bin"), dtype=np.int32)
+        return offsets, terms
 
-    a_indptr, a_indices, a_values = _load_csr("a")
-    b_indptr, b_indices, b_values = _load_csr("b")
-    c_indptr, c_indices, c_values = _load_csr("c")
+    a_offsets, a_terms = _load_terms("a")
+    b_offsets, b_terms = _load_terms("b")
+    c_offsets, c_terms = _load_terms("c")
 
-    return CSRMatrices(
-        a_indptr=a_indptr,
-        a_indices=a_indices,
-        a_values=a_values,
-        b_indptr=b_indptr,
-        b_indices=b_indices,
-        b_values=b_values,
-        c_indptr=c_indptr,
-        c_indices=c_indices,
-        c_values=c_values,
+    return TermMatrices(
+        a_offsets=a_offsets,
+        a_terms=a_terms,
+        b_offsets=b_offsets,
+        b_terms=b_terms,
+        c_offsets=c_offsets,
+        c_terms=c_terms,
     )
+
+
+# Backward-compatible alias
+load_csr_matrices = load_term_matrices
 
 
 def _parse_unknowns(
@@ -215,7 +210,7 @@ def load_solver_data(export_dir: str | Path) -> SolverData:
     num_constraints = meta["num_constraints"]
     num_levels = meta["num_levels"]
 
-    csr = load_csr_matrices(d)
+    tm = load_term_matrices(d)
 
     unk_side, target_idx = _parse_unknowns(
         d / "r1cs_level_unknowns.bin",
@@ -258,7 +253,7 @@ def load_solver_data(export_dir: str | Path) -> SolverData:
     coefficients = _parse_coefficients(d / "r1cs_coefficients.bin")
 
     return SolverData(
-        csr=csr,
+        terms=tm,
         unk_side=unk_side,
         unk_inv_coeff=unk_inv_coeff,
         target_idx=target_idx,

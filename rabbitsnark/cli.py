@@ -98,8 +98,15 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
 
     print("Computing Az/Bz...")
     t0 = time.time()
+    from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
+
+    _terms, coefficients = zkey_to_terms(zkey)
     az_mont, bz_mont = compute_abc(
-        witness_mont, compiled.csr, compiled.domain_size, compiled.domain_size
+        witness_mont,
+        compiled.terms,
+        coefficients,
+        compiled.domain_size,
+        compiled.domain_size,
     )
     elapsed = time.time() - t0
     print(f"Az/Bz computed in {elapsed:.2f}s")

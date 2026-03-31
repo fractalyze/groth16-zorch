@@ -16,16 +16,16 @@
 """Native R1CS solver wrapper — shared by circom and gnark."""
 
 from .solver import (
-    CSRMatrices,
     SolverData,
+    TermMatrices,
     compute_abc,
     solve_and_compute,
     solve_witness,
 )
 
 __all__ = [
-    "CSRMatrices",
     "SolverData",
+    "TermMatrices",
     "compute_abc",
     "solve_and_compute",
     "solve_witness",
