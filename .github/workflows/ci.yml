@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   test-cpu:
-    runs-on: [self-hosted, rabbitsnark-py]
+    runs-on: [self-hosted, cpu]
     steps:
       - uses: actions/checkout@v4
 
@@ -24,7 +24,7 @@ jobs:
         run: bazel --bazelrc=.bazelrc.ci test --config=ci --test_tag_filters=-gpu //...
 
   test-gpu:
-    runs-on: [self-hosted, rabbitsnark-py]
+    runs-on: [self-hosted, gpu]
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +33,7 @@ jobs:
 
   pre-commit-style:
     if: github.actor != 'fractalyze-dev'
-    runs-on: [self-hosted, rabbitsnark-py]
+    runs-on: [self-hosted, cpu]
     steps:
       - name: Checkout rabbitsnark-py
         uses: actions/checkout@v4
