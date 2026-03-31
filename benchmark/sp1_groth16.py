@@ -177,11 +177,16 @@ class Groth16Benchmark(JaxBenchmark):
         from zk_dtypes import bn254_sf
 
         z_mont = jnp.array(data.witness_full, dtype=bn254_sf_mont)
-        z_std = np.asarray(lax.convert_element_type(z_mont, bn254_sf))
+        # Only convert the public inputs (small slice) instead of all 15M elements.
+        z_pub_std = np.asarray(
+            lax.convert_element_type(z_mont[: compiled.config.num_public], bn254_sf)
+        )
         t_prep = time.perf_counter() - t0
         print(f"Witness conversion: {t_prep:.1f}s")
 
-        public_signals = [str(int(z_std[i])) for i in range(compiled.config.num_public)]
+        public_signals = [
+            str(int(z_pub_std[i])) for i in range(compiled.config.num_public)
+        ]
         vk = VerificationKey.from_gnark(data)
 
         # Pre-allocate buffers to avoid ~3 GB alloc+copy per iteration.
