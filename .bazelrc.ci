@@ -1,2 +1,2 @@
-build:ci --remote_cache=grpc://127.0.0.1:9092
+build:ci --remote_cache=grpc://gpu-server:9092
 test:ci --test_output=errors

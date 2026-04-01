@@ -71,7 +71,7 @@ jobs:
           github_pat: ${{ secrets.ISSUE_REACTOR_GH_PAT }}
 
   groth16-gpu:
-    runs-on: [self-hosted, rabbitsnark-py]
+    runs-on: [self-hosted, bench]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,7 +136,7 @@ jobs:
 
   primitives-gpu:
     needs: groth16-gpu
-    runs-on: [self-hosted, rabbitsnark-py]
+    runs-on: [self-hosted, bench]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -167,7 +167,7 @@ jobs:
 
   primitives-cpu:
     needs: primitives-gpu
-    runs-on: [self-hosted, rabbitsnark-py]
+    runs-on: [self-hosted, bench]
     steps:
       - uses: actions/checkout@v4
         with:
