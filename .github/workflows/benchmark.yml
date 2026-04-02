@@ -62,7 +62,7 @@ jobs:
     outputs:
       comment_id: ${{ steps.notify.outputs.comment_id }}
     steps:
-      - uses: fractalyze/benchmark-action/notify@v8
+      - uses: fractalyze/benchmark-action/notify@v9
         id: notify
         with:
           mode: start
@@ -79,7 +79,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v8
+      - uses: fractalyze/benchmark-action@v9
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
@@ -112,7 +112,7 @@ jobs:
   #         clean: false
   #         ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
   #
-  #     - uses: fractalyze/benchmark-action@v8
+  #     - uses: fractalyze/benchmark-action@v9
   #       with:
   #         benchmark_cmd: |
   #           JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
@@ -144,7 +144,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v8
+      - uses: fractalyze/benchmark-action@v9
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
@@ -175,7 +175,7 @@ jobs:
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
 
-      - uses: fractalyze/benchmark-action@v8
+      - uses: fractalyze/benchmark-action@v9
         with:
           benchmark_cmd: |
             JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
@@ -218,7 +218,7 @@ jobs:
             echo "label=completed successfully" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: fractalyze/benchmark-action/notify@v8
+      - uses: fractalyze/benchmark-action/notify@v9
         with:
           mode: end
           pr_number: ${{ inputs.pr_number }}
