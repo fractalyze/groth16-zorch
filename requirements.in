@@ -1,7 +1,7 @@
 absl-py
-jax==0.0.5.dev20260404101436
-jaxlib==0.0.5.dev20260404101436
+jax==0.0.5.dev20260406124809
+jaxlib==0.0.5.dev20260406124809
 numpy
 zk-dtypes
 zkbench==0.3.0
-zkx-cuda-pjrt==0.0.5.dev20260404101436
+zkx-cuda-pjrt==0.0.5.dev20260406124809
