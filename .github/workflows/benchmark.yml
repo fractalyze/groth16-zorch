@@ -21,6 +21,8 @@ permissions:
   issues: write
 
 on:
+  schedule:
+    - cron: '0 20 * * *'  # 20:00 UTC = 05:00 KST
   workflow_dispatch:
     inputs:
       pr_number:
@@ -31,13 +33,6 @@ on:
         type: string
         required: false
         default: ""
-  push:
-    branches: ["main"]
-    paths-ignore:
-      - "*.md"
-      - "LICENSE"
-      - ".gitignore"
-      - ".github/**"
   workflow_call:
     inputs:
       pr_number:
@@ -49,11 +44,9 @@ on:
         required: false
         default: ""
 
-# Cancel in-progress runs for PRs (same head branch), but never cancel
-# pushes to main so that every merge gets a full CI run.
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.pr_number && format('pr-{0}', inputs.pr_number) || github.ref }}
-  cancel-in-progress: ${{ inputs.pr_number != '' || github.ref != 'refs/heads/main' }}
+  group: benchmark-runner
+  cancel-in-progress: false
 
 jobs:
   notify-start:
@@ -82,10 +75,20 @@ jobs:
       - uses: fractalyze/benchmark-action@v9
         with:
           benchmark_cmd: |
-            JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
-                --export_dir=/data/testdata/sp1-groth16/ \
-                --deterministic --circuit=sp1 \
-                --output=${{ github.workspace }}/groth16_gpu_benchmark_results.json
+            docker run --rm \
+              --cpuset-cpus=0-15 \
+              --memory=32g \
+              --gpus=all \
+              --network=host \
+              -v ${{ github.workspace }}:/workspace \
+              -v /data:/data \
+              -v /data/bazel-benchmark-cache:/root/.cache/bazel \
+              -w /workspace \
+              -e JAX_PLATFORMS=cuda,cpu \
+              -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
+              -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
+              ghcr.io/fractalyze/benchmark-runner:latest \
+              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- --export_dir=/data/testdata/sp1-groth16/ --deterministic --circuit=sp1 --output=/workspace/groth16_gpu_benchmark_results.json'
           device: gpu
           results_file: groth16_gpu_benchmark_results.json
           results_dir: benchmark_data_groth16
@@ -99,7 +102,7 @@ jobs:
         with:
           name: benchmark-groth16-gpu
           path: groth16_gpu_benchmark_results.json
-          retention-days: 90
+          retention-days: 7
 
   # TODO(chokobole): Re-enable groth16-cpu
   # groth16-cpu:
@@ -132,7 +135,7 @@ jobs:
   #       with:
   #         name: benchmark-groth16-cpu
   #         path: groth16_cpu_benchmark_results.json
-  #         retention-days: 90
+  #         retention-days: 7
 
   primitives-gpu:
     needs: groth16-gpu
@@ -147,9 +150,20 @@ jobs:
       - uses: fractalyze/benchmark-action@v9
         with:
           benchmark_cmd: |
-            JAX_PLATFORMS=cuda,cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
-                --sizes=16,18,20,22 \
-                --output=${{ github.workspace }}/primitives_gpu_benchmark_results.json
+            docker run --rm \
+              --cpuset-cpus=0-15 \
+              --memory=32g \
+              --gpus=all \
+              --network=host \
+              -v ${{ github.workspace }}:/workspace \
+              -v /data:/data \
+              -v /data/bazel-benchmark-cache:/root/.cache/bazel \
+              -w /workspace \
+              -e JAX_PLATFORMS=cuda,cpu \
+              -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
+              -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
+              ghcr.io/fractalyze/benchmark-runner:latest \
+              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- --sizes=16,18,20,22 --output=/workspace/primitives_gpu_benchmark_results.json'
           device: gpu
           results_file: primitives_gpu_benchmark_results.json
           results_dir: benchmark_data_primitives
@@ -163,7 +177,7 @@ jobs:
         with:
           name: benchmark-primitives-gpu
           path: primitives_gpu_benchmark_results.json
-          retention-days: 90
+          retention-days: 7
 
   primitives-cpu:
     needs: primitives-gpu
@@ -178,9 +192,20 @@ jobs:
       - uses: fractalyze/benchmark-action@v9
         with:
           benchmark_cmd: |
-            JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- \
-                --sizes=16,18,20,22 \
-                --output=${{ github.workspace }}/primitives_cpu_benchmark_results.json
+            docker run --rm \
+              --cpuset-cpus=0-15 \
+              --memory=32g \
+              --gpus=all \
+              --network=host \
+              -v ${{ github.workspace }}:/workspace \
+              -v /data:/data \
+              -v /data/bazel-benchmark-cache:/root/.cache/bazel \
+              -w /workspace \
+              -e JAX_PLATFORMS=cpu \
+              -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
+              -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
+              ghcr.io/fractalyze/benchmark-runner:latest \
+              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- --sizes=16,18,20,22 --output=/workspace/primitives_cpu_benchmark_results.json'
           device: cpu
           results_file: primitives_cpu_benchmark_results.json
           results_dir: benchmark_data_primitives_cpu
@@ -194,7 +219,7 @@ jobs:
         with:
           name: benchmark-primitives-cpu
           path: primitives_cpu_benchmark_results.json
-          retention-days: 90
+          retention-days: 7
 
   notify-end:
     if: always() && inputs.pr_number != ''
