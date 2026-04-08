@@ -66,11 +66,34 @@ jobs:
   groth16-gpu:
     runs-on: [self-hosted, bench]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
+
+      - name: Resolve r1cs-solver commit
+        id: r1cs_commit
+        run: |
+          COMMIT=$(awk -F'"' '/R1CS_SOLVER_COMMIT =/{print $2}' third_party/r1cs_solver/workspace.bzl | tr -d '\r\n ')
+          if ! echo "$COMMIT" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::Invalid r1cs-solver commit hash: ${COMMIT}"
+            exit 1
+          fi
+          echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull benchmark runner image
+        run: docker pull ghcr.io/fractalyze/benchmark-runner:latest
+
+      - name: Pre-download private repo archives for Bazel
+        run: |
+          mkdir -p /tmp/distdir
+          COMMIT="${{ steps.r1cs_commit.outputs.commit }}"
+          curl -fsS --location-trusted -H "Authorization: token ${GITHUB_PAT}" \
+            "https://github.com/fractalyze/r1cs-solver/archive/${COMMIT}.tar.gz" \
+            -o "/tmp/distdir/${COMMIT}.tar.gz"
+        env:
+          GITHUB_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
 
       - uses: fractalyze/benchmark-action@v9
         with:
@@ -83,12 +106,13 @@ jobs:
               -v ${{ github.workspace }}:/workspace \
               -v /data:/data \
               -v /data/bazel-benchmark-cache:/root/.cache/bazel \
+              -v /tmp/distdir:/distdir:ro \
               -w /workspace \
               -e JAX_PLATFORMS=cuda,cpu \
               -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
               -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
               ghcr.io/fractalyze/benchmark-runner:latest \
-              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- --export_dir=/data/testdata/sp1-groth16/ --deterministic --circuit=sp1 --output=/workspace/groth16_gpu_benchmark_results.json'
+              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci --distdir=/distdir //benchmark:sp1_groth16 -- --export_dir=/data/testdata/sp1-groth16/ --deterministic --circuit=sp1 --output=/workspace/groth16_gpu_benchmark_results.json'
           device: gpu
           results_file: groth16_gpu_benchmark_results.json
           results_dir: benchmark_data_groth16
@@ -98,7 +122,7 @@ jobs:
           slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
           store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: benchmark-groth16-gpu
           path: groth16_gpu_benchmark_results.json
@@ -109,7 +133,7 @@ jobs:
   #   needs: groth16-gpu
   #   runs-on: [self-hosted, rabbitsnark-py]
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
   #       with:
   #         fetch-depth: 0
   #         clean: false
@@ -131,7 +155,7 @@ jobs:
   #         slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
   #         store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
   #
-  #     - uses: actions/upload-artifact@v4
+  #     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
   #       with:
   #         name: benchmark-groth16-cpu
   #         path: groth16_cpu_benchmark_results.json
@@ -141,11 +165,34 @@ jobs:
     needs: groth16-gpu
     runs-on: [self-hosted, bench]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
+
+      - name: Resolve r1cs-solver commit
+        id: r1cs_commit
+        run: |
+          COMMIT=$(awk -F'"' '/R1CS_SOLVER_COMMIT =/{print $2}' third_party/r1cs_solver/workspace.bzl | tr -d '\r\n ')
+          if ! echo "$COMMIT" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::Invalid r1cs-solver commit hash: ${COMMIT}"
+            exit 1
+          fi
+          echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull benchmark runner image
+        run: docker pull ghcr.io/fractalyze/benchmark-runner:latest
+
+      - name: Pre-download private repo archives for Bazel
+        run: |
+          mkdir -p /tmp/distdir
+          COMMIT="${{ steps.r1cs_commit.outputs.commit }}"
+          curl -fsS --location-trusted -H "Authorization: token ${GITHUB_PAT}" \
+            "https://github.com/fractalyze/r1cs-solver/archive/${COMMIT}.tar.gz" \
+            -o "/tmp/distdir/${COMMIT}.tar.gz"
+        env:
+          GITHUB_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
 
       - uses: fractalyze/benchmark-action@v9
         with:
@@ -158,12 +205,13 @@ jobs:
               -v ${{ github.workspace }}:/workspace \
               -v /data:/data \
               -v /data/bazel-benchmark-cache:/root/.cache/bazel \
+              -v /tmp/distdir:/distdir:ro \
               -w /workspace \
               -e JAX_PLATFORMS=cuda,cpu \
               -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
               -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
               ghcr.io/fractalyze/benchmark-runner:latest \
-              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- --sizes=16,18,20,22 --output=/workspace/primitives_gpu_benchmark_results.json'
+              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci --distdir=/distdir //benchmark:primitives_benchmark -- --sizes=16,18,20,22 --output=/workspace/primitives_gpu_benchmark_results.json'
           device: gpu
           results_file: primitives_gpu_benchmark_results.json
           results_dir: benchmark_data_primitives
@@ -173,7 +221,7 @@ jobs:
           slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
           store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: benchmark-primitives-gpu
           path: primitives_gpu_benchmark_results.json
@@ -183,11 +231,34 @@ jobs:
     needs: primitives-gpu
     runs-on: [self-hosted, bench]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           clean: false
           ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
+
+      - name: Resolve r1cs-solver commit
+        id: r1cs_commit
+        run: |
+          COMMIT=$(awk -F'"' '/R1CS_SOLVER_COMMIT =/{print $2}' third_party/r1cs_solver/workspace.bzl | tr -d '\r\n ')
+          if ! echo "$COMMIT" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::Invalid r1cs-solver commit hash: ${COMMIT}"
+            exit 1
+          fi
+          echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull benchmark runner image
+        run: docker pull ghcr.io/fractalyze/benchmark-runner:latest
+
+      - name: Pre-download private repo archives for Bazel
+        run: |
+          mkdir -p /tmp/distdir
+          COMMIT="${{ steps.r1cs_commit.outputs.commit }}"
+          curl -fsS --location-trusted -H "Authorization: token ${GITHUB_PAT}" \
+            "https://github.com/fractalyze/r1cs-solver/archive/${COMMIT}.tar.gz" \
+            -o "/tmp/distdir/${COMMIT}.tar.gz"
+        env:
+          GITHUB_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
 
       - uses: fractalyze/benchmark-action@v9
         with:
@@ -200,12 +271,13 @@ jobs:
               -v ${{ github.workspace }}:/workspace \
               -v /data:/data \
               -v /data/bazel-benchmark-cache:/root/.cache/bazel \
+              -v /tmp/distdir:/distdir:ro \
               -w /workspace \
               -e JAX_PLATFORMS=cpu \
               -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
               -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
               ghcr.io/fractalyze/benchmark-runner:latest \
-              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:primitives_benchmark -- --sizes=16,18,20,22 --output=/workspace/primitives_cpu_benchmark_results.json'
+              bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci --distdir=/distdir //benchmark:primitives_benchmark -- --sizes=16,18,20,22 --output=/workspace/primitives_cpu_benchmark_results.json'
           device: cpu
           results_file: primitives_cpu_benchmark_results.json
           results_dir: benchmark_data_primitives_cpu
@@ -215,7 +287,7 @@ jobs:
           slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
           store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: benchmark-primitives-cpu
           path: primitives_cpu_benchmark_results.json
