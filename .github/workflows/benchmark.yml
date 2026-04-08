@@ -66,7 +66,7 @@ jobs:
   groth16-gpu:
     runs-on: [self-hosted, bench]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           clean: false
@@ -122,7 +122,7 @@ jobs:
           slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
           store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: benchmark-groth16-gpu
           path: groth16_gpu_benchmark_results.json
@@ -133,7 +133,7 @@ jobs:
   #   needs: groth16-gpu
   #   runs-on: [self-hosted, rabbitsnark-py]
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
   #       with:
   #         fetch-depth: 0
   #         clean: false
@@ -155,7 +155,7 @@ jobs:
   #         slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
   #         store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
   #
-  #     - uses: actions/upload-artifact@v4
+  #     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
   #       with:
   #         name: benchmark-groth16-cpu
   #         path: groth16_cpu_benchmark_results.json
@@ -165,7 +165,7 @@ jobs:
     needs: groth16-gpu
     runs-on: [self-hosted, bench]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           clean: false
@@ -221,7 +221,7 @@ jobs:
           slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
           store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: benchmark-primitives-gpu
           path: primitives_gpu_benchmark_results.json
@@ -231,7 +231,7 @@ jobs:
     needs: primitives-gpu
     runs-on: [self-hosted, bench]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           clean: false
@@ -287,7 +287,7 @@ jobs:
           slack_webhook: ${{ secrets.SLACK_BENCHMARK_WEBHOOK }}
           store_results: ${{ !inputs.pr_number && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: benchmark-primitives-cpu
           path: primitives_cpu_benchmark_results.json
