@@ -55,7 +55,7 @@ jobs:
     outputs:
       comment_id: ${{ steps.notify.outputs.comment_id }}
     steps:
-      - uses: fractalyze/benchmark-action/notify@v9
+      - uses: fractalyze/benchmark-action/notify@v10
         id: notify
         with:
           mode: start
@@ -95,7 +95,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
 
-      - uses: fractalyze/benchmark-action@v9
+      - uses: fractalyze/benchmark-action@v10
         with:
           benchmark_cmd: |
             docker run --rm \
@@ -139,7 +139,7 @@ jobs:
   #         clean: false
   #         ref: ${{ inputs.pr_number && format('refs/pull/{0}/head', inputs.pr_number) || '' }}
   #
-  #     - uses: fractalyze/benchmark-action@v9
+  #     - uses: fractalyze/benchmark-action@v10
   #       with:
   #         benchmark_cmd: |
   #           JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
@@ -194,7 +194,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
 
-      - uses: fractalyze/benchmark-action@v9
+      - uses: fractalyze/benchmark-action@v10
         with:
           benchmark_cmd: |
             docker run --rm \
@@ -260,7 +260,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
 
-      - uses: fractalyze/benchmark-action@v9
+      - uses: fractalyze/benchmark-action@v10
         with:
           benchmark_cmd: |
             docker run --rm \
@@ -315,7 +315,7 @@ jobs:
             echo "label=completed successfully" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: fractalyze/benchmark-action/notify@v9
+      - uses: fractalyze/benchmark-action/notify@v10
         with:
           mode: end
           pr_number: ${{ inputs.pr_number }}
