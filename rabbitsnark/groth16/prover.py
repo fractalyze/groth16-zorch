@@ -74,10 +74,11 @@ if TYPE_CHECKING:
     from rabbitsnark.circom.zkey.zkey import ZKeyV1
     from rabbitsnark.gnark.types import GnarkProvingData
 
-# Subgroup generators for NTT root of unity computation.
-# circom uses generator 7: root = 7^((p - 1) / n) mod p
-# gnark  uses generator 5: root = 5^((p - 1) / n) mod p
-CIRCOM_GENERATOR = 7
+# Subgroup generators for NTT root of unity computation. Both circom
+# (snarkjs ffjavascript) and gnark pin the BN254 Fr multiplicative
+# generator at 5 — used for both the principal root of unity
+# (omega_n = 5^((p-1)/n)) and the coset shift (omega_{2n} = 5^((p-1)/(2n))).
+CIRCOM_GENERATOR = 5
 GNARK_GENERATOR = 5
 
 BN254_TWO_ADIC_BITS = 28
