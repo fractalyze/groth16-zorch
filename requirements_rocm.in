@@ -1,0 +1,8 @@
+absl-py
+jax==0.10.0.dev20260528
+jaxlib==0.10.0.dev20260528
+jax-rocm7-plugin==0.10.0.dev20260528
+jax-rocm7-pjrt==0.10.0.dev20260528
+numpy
+zk-dtypes
+zkbench==0.3.0

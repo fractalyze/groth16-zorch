@@ -27,3 +27,18 @@ compile_pip_requirements(
     ],
     requirements_txt = "requirements_lock_3_11.txt",
 )
+
+# AMD ROCm install path — same base + jax-rocm7-plugin/pjrt instead of
+# jax-cuda12-*. Run `bazel run //:requirements_rocm.update` to regenerate.
+compile_pip_requirements(
+    name = "requirements_rocm",
+    timeout = "moderate",
+    src = "requirements_rocm.in",
+    extra_args = [
+        "--index-url",
+        "https://fractalyze.github.io/pypi/simple/",
+        "--extra-index-url",
+        "https://pypi.org/simple/",
+    ],
+    requirements_txt = "requirements_rocm_lock_3_11.txt",
+)
