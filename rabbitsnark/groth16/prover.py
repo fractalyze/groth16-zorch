@@ -430,7 +430,7 @@ def _prove_ntt(
     """Phase 1: NTT + field arithmetic → h-polynomial scalars.
 
     GPU-safe JIT function.  Returns h_scalars (bn254_sf) for the MSM phase.
-    Uses ``lax.fft`` with the protocol-specific root of unity.
+    Uses ``lax.ntt`` with the protocol-specific root of unity.
     """
     n = 1 << config.log_n
     gen = config.generator
@@ -439,14 +439,20 @@ def _prove_ntt(
     cz = az_mont * bz_mont
 
     # IFFT x 3
-    a_poly = lax.fft(az_mont, "IFFT", n, generator=gen)
-    b_poly = lax.fft(bz_mont, "IFFT", n, generator=gen)
-    c_poly = lax.fft(cz, "IFFT", n, generator=gen)
+    a_poly = lax.ntt(az_mont, ntt_type="INTT", ntt_length=n, generator=gen)
+    b_poly = lax.ntt(bz_mont, ntt_type="INTT", ntt_length=n, generator=gen)
+    c_poly = lax.ntt(cz, ntt_type="INTT", ntt_length=n, generator=gen)
 
     # Coset NTT x 3
-    a_coset = lax.fft(a_poly * shift_powers, "FFT", n, generator=gen)
-    b_coset = lax.fft(b_poly * shift_powers, "FFT", n, generator=gen)
-    c_coset = lax.fft(c_poly * shift_powers, "FFT", n, generator=gen)
+    a_coset = lax.ntt(
+        a_poly * shift_powers, ntt_type="NTT", ntt_length=n, generator=gen
+    )
+    b_coset = lax.ntt(
+        b_poly * shift_powers, ntt_type="NTT", ntt_length=n, generator=gen
+    )
+    c_coset = lax.ntt(
+        c_poly * shift_powers, ntt_type="NTT", ntt_length=n, generator=gen
+    )
 
     # Quotient: h = a * b - c on coset
     h_evals_mont = a_coset * b_coset - c_coset
@@ -455,7 +461,7 @@ def _prove_ntt(
         return lax.convert_element_type(h_evals_mont, bn254_sf)
     else:
         h_evals_mont = h_evals_mont * den
-        h_poly = lax.fft(h_evals_mont, "IFFT", n, generator=gen)
+        h_poly = lax.ntt(h_evals_mont, ntt_type="INTT", ntt_length=n, generator=gen)
         h_coeffs = h_poly * inv_shift_powers
         h_coeffs = lax.bit_reverse(h_coeffs, dimensions=[0])
         return lax.convert_element_type(h_coeffs[: n - 1], bn254_sf)
