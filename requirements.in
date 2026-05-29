@@ -1,7 +1,7 @@
 absl-py
 jax==0.10.0.dev20260528
 jaxlib==0.10.0.dev20260528
-jax-cuda12-plugin==0.10.0.dev20260528
+jax-cuda12-plugin[with-cuda]==0.10.0.dev20260528
 jax-cuda12-pjrt==0.10.0.dev20260528
 numpy
 zk-dtypes
