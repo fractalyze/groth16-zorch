@@ -1,0 +1,42 @@
+# Benchmark-on-rented-gpu plugin config for rabbitsnark-py groth16
+# on NVIDIA sm_120 (RTX 5090, MI300-class compute).
+#
+# Read by the `benchmark-on-rented-gpu` plugin
+# (fractalyze/claude-plugins#43). Sibling to bench_config.amd-gfx942.yaml.
+
+name: rabbit-groth16-nvidia
+description: |
+  sp1-groth16 prove + verify on NVIDIA sm_120 (RTX 5090) via the
+  jax_fork CUDA stack. The C2 reference for the C2↔C3 fair comparison
+  in fractalyze/rabbitsnark-py#74. Running C2 under the same
+  containerized plugin path as C3 removes the dev-laptop vs
+  rental-machine environment drift the prior C2 measurement carried.
+
+image: ghcr.io/fractalyze/rabbitsnark-py:groth16-cuda-latest
+
+hardware:
+  vendor: nvidia
+  # sm_120 = RTX 5090 / Blackwell. Vast.ai may not have many offers;
+  # fall back to sm_90 (H100) if needed by relaxing this filter.
+  arch: sm_120
+  min_gpu_ram_gb: 32
+
+budget:
+  max_dollars: 5.00
+  max_runtime_minutes: 30
+
+fixture:
+  local_path: /data/ryan/testdata/sp1-groth16
+  container_path: /data/sp1-groth16
+
+output:
+  container_path: /output/c2_nvidia_result.json
+  download_to_branch: bench/c2-sm120-{sha}-{ts}
+  commit_path: benchmark/results/c2-sm120-{sha}-{ts}.json
+
+container_args:
+  - --export_dir=/data/sp1-groth16
+  - --deterministic
+  - --warmup=2
+  - --iterations=10
+  - --output=/output/c2_nvidia_result.json

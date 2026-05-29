@@ -1,0 +1,105 @@
+# syntax=docker/dockerfile:1.6
+#
+# Rabbit groth16 benchmark image for AMD GPUs (ROCm 7.x).
+#
+# Built and pushed by `image_build.sh` in this directory, pulled by the
+# `benchmark-on-rented-gpu` plugin (fractalyze/claude-plugins#43) onto a
+# vast.ai gfx942 (MI300) host.
+#
+# Two stages:
+#   1. solver-build (ubuntu:22.04 + bazel) — produces
+#      `libr1cs_solver.so` from the rabbit checkout via the same
+#      `@r1cs_solver//solver:libr1cs_solver.so` target we build for
+#      local NVIDIA development. The solver is hardware-agnostic
+#      (MLIR → LLVM → CPU object), so the same .so works for both
+#      CUDA and ROCm runtime targets.
+#
+#   2. runtime (rocm/dev-ubuntu-22.04:7.2.3-complete) — Python 3.11 +
+#      jax_fork ROCm wheels from `requirements_rocm_lock_3_11.txt`,
+#      rabbit source, and the .so from stage 1. The base image
+#      provides ROCm 7.2.3 system libraries; we deliberately skip the
+#      `[with-rocm]` wheel extra because its `amd_rocm_hip_runtime_*`
+#      dependencies are AMD-internal and not on PyPI (see personal memo
+#      `jax-cuda12-plugin-needs-with-cuda-extra-for-runtime-libs-2026-05-29`
+#      for the parallel CUDA case).
+
+ARG BAZEL_VERSION=7.4.1
+ARG ROCM_TAG=7.2.3-complete
+
+# ----------------------------------------------------------------------
+# Stage 1: bazel-build libr1cs_solver.so
+# ----------------------------------------------------------------------
+FROM ubuntu:22.04 AS solver-build
+
+ARG BAZEL_VERSION
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git build-essential \
+        python3.11 python3.11-dev python3.11-venv \
+        unzip zip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pinned bazel — matches rabbit's .bazelversion.
+RUN curl -fsSL "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-linux-x86_64" \
+        -o /usr/local/bin/bazel \
+    && chmod +x /usr/local/bin/bazel
+
+WORKDIR /work
+COPY . /work
+
+# Build only the .so we need (skip the full //...). Disk cache miss the
+# first build, ~10 min cold; warm builds in seconds.
+RUN bazel build -c opt @r1cs_solver//solver:libr1cs_solver.so \
+    && cp bazel-bin/external/r1cs_solver/solver/libr1cs_solver.so /work/libr1cs_solver.so
+
+# ----------------------------------------------------------------------
+# Stage 2: ROCm runtime + rabbit
+# ----------------------------------------------------------------------
+FROM rocm/dev-ubuntu-22.04:${ROCM_TAG} AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl \
+        python3.11 python3.11-dev python3.11-venv \
+        libpython3.11 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Hermetic venv under /opt; PATH puts it ahead of system python.
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+
+WORKDIR /rabbit
+
+# Install the lockfile first so subsequent rabbit source changes don't
+# bust the pip layer cache. ROCm system libs come from the base image;
+# the wheel does not pull amd_rocm_* runtime packages (no [with-rocm]
+# extra resolvable on PyPI).
+COPY requirements_rocm_lock_3_11.txt /rabbit/requirements_rocm_lock_3_11.txt
+RUN pip install --upgrade pip \
+    && pip install -r requirements_rocm_lock_3_11.txt
+
+# Rabbit source. Only the directories the benchmark actually needs.
+COPY rabbitsnark/ /rabbit/rabbitsnark/
+COPY benchmark/   /rabbit/benchmark/
+
+# libr1cs_solver.so built in stage 1.
+COPY --from=solver-build /work/libr1cs_solver.so /opt/lib/libr1cs_solver.so
+
+ENV PYTHONPATH=/rabbit
+ENV R1CS_SOLVER_LIB=/opt/lib/libr1cs_solver.so
+ENV XLA_PYTHON_CLIENT_PREALLOCATE=false
+ENV JAX_PLATFORMS=rocm,cpu
+
+# The plugin mounts the sp1-groth16 fixture at /data/sp1-groth16 and
+# expects results at /output/. Both directories pre-created so a fresh
+# `docker run --rm` without volume mounts can still surface the
+# permission/ENOENT error early instead of mid-benchmark.
+RUN mkdir -p /data/sp1-groth16 /output
+
+# Smoke-friendly default: small iteration count. The plugin will
+# override with --iterations / --output per `bench_config.yaml`.
+ENTRYPOINT ["python", "-m", "benchmark.sp1_groth16"]
+CMD ["--export_dir=/data/sp1-groth16", \
+     "--deterministic", "--warmup=2", "--iterations=10", \
+     "--output=/output/c3_gfx942_result.json"]

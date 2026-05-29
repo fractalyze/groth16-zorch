@@ -1,0 +1,49 @@
+# Benchmark-on-rented-gpu plugin config for rabbitsnark-py groth16.
+#
+# Read by the `benchmark-on-rented-gpu` plugin
+# (fractalyze/claude-plugins#43). The plugin combines this with vast.ai
+# offer search + auto-destroy + result fetch.
+
+name: rabbit-groth16-amd
+description: |
+  sp1-groth16 prove + verify on AMD gfx942 (MI300) via the jax_fork
+  ROCm stack. Mirrors the C2 NVIDIA reference measured in
+  fractalyze/rabbitsnark-py#74.
+
+# Image to pull on the rented host. Built and pushed by
+# `image_build.sh` in this directory.
+image: ghcr.io/fractalyze/rabbitsnark-py:groth16-rocm-latest
+
+# Hardware target (vast.ai offer filter).
+hardware:
+  vendor: amd
+  arch: gfx942
+  min_gpu_ram_gb: 32
+
+# Budget / runtime guardrails. The plugin enforces the triple-layer
+# hard $-cap (spec PR fractalyze/claude-plugins#42).
+budget:
+  max_dollars: 5.00
+  max_runtime_minutes: 30
+
+# Fixture mounted at /data/sp1-groth16 in the image. The plugin uploads
+# this directory (or skips upload if a `fixture_url` is given) before
+# starting the container.
+fixture:
+  local_path: /data/ryan/testdata/sp1-groth16
+  container_path: /data/sp1-groth16
+
+# Where the container writes results. Plugin downloads after the run.
+output:
+  container_path: /output/c3_gfx942_result.json
+  download_to_branch: bench/c3-gfx942-{sha}-{ts}
+  commit_path: benchmark/results/c3-gfx942-{sha}-{ts}.json
+
+# Container args override the image's CMD. Match the n=10 + warmup=2
+# protocol used for C1/C2 in #74.
+container_args:
+  - --export_dir=/data/sp1-groth16
+  - --deterministic
+  - --warmup=2
+  - --iterations=10
+  - --output=/output/c3_gfx942_result.json
