@@ -175,19 +175,20 @@ only under `--deterministic` AND identical `r`, `s` between impls.
 Rabbit uses a fixed `r`, `s` derived from a seed; SP1 ref does the same.
 The harness's `metadata.circuit` field SHOULD carry the seed when used.
 
-**Carve-out — FFT/IFFT** (pending [`fractalyze/sp1#26`](https://github.com/fractalyze/sp1/pull/26) merge):
-rabbit's `lax.fft(s, "FFT", n, generator=5)` produces the mathematically
-correct natural-in/natural-out NTT (verified via delta-input test —
-`lax.fft(delta[1])` returns `[1, ω, ω², …]` with ω = `5^((p-1)/n)`).
-SP1 ref's `sp1-groth16-bench` standalone bench was misusing gnark's
-API (`fft.DIT` expects bit-reversed input; the bench fed natural-order
-scalars), producing `fft`/`ifft` `output_hash` values that did not
-represent the NTT of the input. The fix in sp1#26 routes the bench
-through `fft.DIF` + `fft.BitReverse` and now matches rabbit's hashes
-byte-for-byte at log_size ∈ {4, 16, 18, 20}. Once that PR merges and
-the `sp1-ref-cuda` image (sp1#25) is rebuilt against the fixed bench,
-the cross-impl gate for `fft`/`ifft` works without further changes
-here.
+**Historical note — FFT/IFFT convention divergence** (resolved by
+[`fractalyze/sp1#26`](https://github.com/fractalyze/sp1/pull/26),
+merged): rabbit's
+`lax.ntt(s, ntt_type="NTT", ntt_length=n, generator=5)` produces the
+mathematically correct natural-in/natural-out NTT (verified via
+delta-input test — `lax.ntt(delta[1])` returns `[1, ω, ω², …]` with
+ω = `5^((p-1)/n)`). SP1 ref's `sp1-groth16-bench` standalone bench
+was originally misusing gnark's API (`fft.DIT` expects bit-reversed
+input; the bench fed natural-order scalars), producing `fft`/`ifft`
+`output_hash` values that did not represent the NTT of the input.
+sp1#26 routed the bench through `fft.DIF` + `fft.BitReverse` and now
+matches rabbit's hashes byte-for-byte at log_size ∈ {4, 16, 18, 20}.
+The cross-impl gate for `fft`/`ifft` works end-to-end once the
+`sp1-ref-cuda` image (sp1#25) is rebuilt against the fixed bench.
 
 ## Versioning
 
