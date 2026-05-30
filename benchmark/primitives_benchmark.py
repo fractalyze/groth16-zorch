@@ -42,44 +42,67 @@ from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
 # gnark uses generator 5 for NTT evaluation domain.
 GNARK_GENERATOR = 5
 
-# Expected output hashes per (op, degree). Inputs are deterministic (fixed
-# seed), so outputs must be identical across runs. If a compiler or runtime
-# change alters these, it indicates a correctness regression.
+# Hashes are computed in gnark-crypto canonical form so they match SP1
+# ref's sp1-groth16-bench/cmd/primitives output byte-for-byte. See
+# benchmark/CONTRACT.md ("Canonical output_hash rules") for the spec.
+BN254_FR_MODULUS = (
+    21888242871839275222246405745257275088548364400416034343698204186575808495617
+)
+BN254_FP_MODULUS = (
+    21888242871839275222246405745257275088696311157297823662689037894645226208583
+)
+_MONT_R_INV_FP = pow(1 << 256, -1, BN254_FP_MODULUS)
+
+# MSM values match `fractalyze/sp1@ref:sp1-groth16-bench/bin/primitives
+# --sizes=… --iterations=1 --warmup=0 --json` on the same (seed=42)
+# MT19937 stream — cross-impl identity is asserted by run_local.sh.
+# FFT/IFFT values represent the mathematically correct natural-in/
+# natural-out NTT; they match SP1 ref's bench AFTER fractalyze/sp1#26
+# (the bench previously misused gnark's fft.DIT/DIF — see CONTRACT.md
+# FFT/IFFT carve-out).
 _EXPECTED_HASHES: dict[tuple[str, int], str] = {
     # degree 4 (smoke test)
-    ("fft", 4): "e67daa1b3a1ff76c475914f059314edecfc15dd4df5391c2844df3f967c735b8",
-    ("ifft", 4): "69d28d58b50137796491499fa884ea1f8b35c11adb2dbef0c2ac9e63a5a7d1a1",
-    ("msm_g1", 4): "25fc6d3944e8f815c5b2b7c41deedd04ac113b645228b34d892220a2fd5cbd70",
+    ("fft", 4): "c390d98af36e6df3f0d8f8596f7157f7de7708e89f2f2607480628732fc5f18c",
+    ("ifft", 4): "fde8b21addeb7144e7c5df34259f0d7bf41f00418c68ac5b94e708ba286b9cda",
+    ("msm_g1", 4): "cd31b79a267287eaf1c0262abb133c5a93532f529173d32c4f1f9449efc57f95",
     # degree 16
-    ("fft", 16): "88f3691fddb59bf515970ad73ba91f4953d1d92d05e7673b51ffd0cc173fa0d3",
-    ("ifft", 16): "076a19ed238b6f9c14c9481781eb1a0617139f817c57ff1c328cf2ee3a7031c4",
-    ("msm_g1", 16): "6938ab273f49cb82f29998ba2456b723b87585962ededdc8a6941855328e8af3",
+    ("fft", 16): "c63b84b3199027b0391f35567400924669d5199736fc4067d336d830922e7ec2",
+    ("ifft", 16): "92557e5fe1b5c5c5ac737d54537ed021d1b618b34d8c7bb5a786586c2ef257ca",
+    ("msm_g1", 16): "8f8be98cfba31bd2d38589f4a4bcee0f5ba5a1387ae4da7859b3014810d71a24",
     # degree 18
-    ("fft", 18): "34519dc28351ba5b5e7317e9257c5f8932b5bdb8e6ef3a32557d820ae718a48e",
-    ("ifft", 18): "f5b250ad02708816df34554ba69a2830c491a279e8e2582e04137ea9ca134a0f",
-    ("msm_g1", 18): "01b9bf7257b9a897554018d856241d310ba9737007a2665ad6849617e4a439ce",
+    ("fft", 18): "39047b0ff1aaa1d6064e900a422fb035804b12c25783f6d8057a0b55eaa579b7",
+    ("ifft", 18): "d1b4402334099e05783a1fb6434d1c13368573bfdf52bd63fe338afed4f84a38",
+    ("msm_g1", 18): "ccba575dd045c22dfcc1a4202c844b48d795896d54a3cfbae864928f3b9b5e8f",
     # degree 20
-    ("fft", 20): "b688a07e9347bdf4607dd6fe157f221c002430a63dc4b3d36ed50ca42f26b568",
-    ("ifft", 20): "ad80eb4a2d70f1941c4365f8e23109346b6658a8fa5e9b100128bd25d29c4872",
-    ("msm_g1", 20): "968ce09676a34b4783f9ff84b4d9041e1aa5db10e7bbd06bd8a87412d0eca06b",
+    ("fft", 20): "d236623b3dfd0a2b1693c036eaac72e04b443bc2966c962550b5b6c62800cd4a",
+    ("ifft", 20): "82d21fd0d5603b80e3a77539cf80c34f2eb726e08a7b242782c0ce8df9713351",
+    ("msm_g1", 20): "b08e8b8286d767a7f784dcdc12895dca8161778f80d61bd5e8f030f5787e9273",
     # degree 22
-    ("fft", 22): "50167109d9443f63464c2ed63e650786a3813d3e94ad8762500f108b68dab723",
-    ("ifft", 22): "c73328a6bca72f650635446cfc86fdb0178a8d29c970b57af189a1091dcdd709",
-    ("msm_g1", 22): "ce3289dd5429b30bc9b72d34fa6a5aabdcf8f141691b5743477f0dedeaed1b5b",
-    # degree 24
-    ("fft", 24): "5c41c9122b6873a1a9173310bb7d1a65012c8e9c89b9f6c587bb5615e7cd4f46",
-    ("ifft", 24): "c79e15b2cb4560df4753b4a84404cdc628f0e5e8a437cbddbebb2ba57d61ba2a",
-    ("msm_g1", 24): "0d292d795f431adf9692b8471adc4418a34784969a7b22906d2731dda11d5c42",
+    ("fft", 22): "13d38d7606295876aed0201215319146ac78fbca8d370beeb161416b0f9ed349",
+    ("ifft", 22): "826db606c7987472977722b85114f37913407e1c8ec6665cdb0505e48abb4ec7",
+    ("msm_g1", 22): "38f140969de7ccd3c79a8f3b8f63451dd071b931ad055927257f173e8de63240",
+    # degree 24 not pre-populated — regenerate on first --sizes=24 run.
 }
 
 
-def _hash_array(arr: jnp.ndarray) -> str:
-    """Compute SHA-256 hash of a JAX array's raw bytes."""
-    arr_np = np.array(arr)
-    if arr_np.ndim == 0:
-        arr_np = arr_np.reshape(1)
-    raw = arr_np.view(np.uint8).tobytes()
-    return hashlib.sha256(raw).hexdigest()
+def _hash_scalars(arr) -> str:
+    """SHA-256 of an fr.Element array, gnark canonical form: standard-form
+    big-endian 32 bytes per element, concatenated in array order."""
+    h = hashlib.sha256()
+    for val in np.asarray(arr).ravel():
+        h.update(int(val).to_bytes(32, "big"))
+    return h.hexdigest()
+
+
+def _hash_g1_affine(point) -> str:
+    """SHA-256 of a G1Affine point in gnark Marshal() canonical form
+    (BN254 uses 64-byte uncompressed: x big-endian || y big-endian, both
+    in standard form)."""
+    item = np.asarray(point).item()
+    x_mont, y_mont = item.raw
+    x = (int(x_mont) * _MONT_R_INV_FP) % BN254_FP_MODULUS
+    y = (int(y_mont) * _MONT_R_INV_FP) % BN254_FP_MODULUS
+    return hashlib.sha256(x.to_bytes(32, "big") + y.to_bytes(32, "big")).hexdigest()
 
 
 def _generate_scalars(n: int, seed: int = 42) -> jnp.ndarray:
@@ -109,8 +132,8 @@ class PrimitivesBenchmark(JaxBenchmark):
         parser.add_argument(
             "--sizes",
             type=str,
-            default="16,18,20,22,24",
-            help="Comma-separated log2 sizes (default: 16,18,20,22,24)",
+            default="16,18,20,22",
+            help="Comma-separated log2 sizes (default: 16,18,20,22)",
         )
 
     def get_ops(self, args: argparse.Namespace) -> Iterable[BenchmarkOp]:
@@ -130,7 +153,7 @@ class PrimitivesBenchmark(JaxBenchmark):
             meta = {"field": "bn254", "degree": str(log_size)}
 
             scalars = scalars_full[:n]
-            scalars_hash = _hash_array(scalars)
+            scalars_hash = _hash_scalars(scalars)
 
             # Mutable containers capture fn() results for hash verification
             # against hardcoded _EXPECTED_HASHES constants.
@@ -155,9 +178,9 @@ class PrimitivesBenchmark(JaxBenchmark):
                 fn=_fft_fn,
                 metadata={**meta},
                 input_hash=scalars_hash,
-                output_hash_fn=lambda last=fft_last: _hash_array(last["result"]),
+                output_hash_fn=lambda last=fft_last: _hash_scalars(last["result"]),
                 verify_fn=lambda last=fft_last, ls=log_size: (
-                    _hash_array(last["result"]) == _EXPECTED_HASHES[("fft", ls)]
+                    _hash_scalars(last["result"]) == _EXPECTED_HASHES[("fft", ls)]
                 ),
             )
 
@@ -166,15 +189,15 @@ class PrimitivesBenchmark(JaxBenchmark):
                 fn=_ifft_fn,
                 metadata={**meta},
                 input_hash=scalars_hash,
-                output_hash_fn=lambda last=ifft_last: _hash_array(last["result"]),
+                output_hash_fn=lambda last=ifft_last: _hash_scalars(last["result"]),
                 verify_fn=lambda last=ifft_last, ls=log_size: (
-                    _hash_array(last["result"]) == _EXPECTED_HASHES[("ifft", ls)]
+                    _hash_scalars(last["result"]) == _EXPECTED_HASHES[("ifft", ls)]
                 ),
             )
 
             msm_s = msm_scalars_full[:n]
             msm_b = bases_full[:n]
-            msm_hash = _hash_array(msm_s)
+            msm_hash = _hash_scalars(msm_s)
 
             def _msm_fn(sc=msm_s, ba=msm_b, last=msm_last):
                 r = lax.msm(sc, ba)
@@ -186,9 +209,9 @@ class PrimitivesBenchmark(JaxBenchmark):
                 fn=_msm_fn,
                 metadata={**meta},
                 input_hash=msm_hash,
-                output_hash_fn=lambda last=msm_last: _hash_array(last["result"]),
+                output_hash_fn=lambda last=msm_last: _hash_g1_affine(last["result"]),
                 verify_fn=lambda last=msm_last, ls=log_size: (
-                    _hash_array(last["result"]) == _EXPECTED_HASHES[("msm_g1", ls)]
+                    _hash_g1_affine(last["result"]) == _EXPECTED_HASHES[("msm_g1", ls)]
                 ),
             )
 
