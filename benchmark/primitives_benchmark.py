@@ -56,9 +56,10 @@ _MONT_R_INV_FP = pow(1 << 256, -1, BN254_FP_MODULUS)
 # MSM values match `fractalyze/sp1@ref:sp1-groth16-bench/bin/primitives
 # --sizes=… --iterations=1 --warmup=0 --json` on the same (seed=42)
 # MT19937 stream — cross-impl identity is asserted by run_local.sh.
-# FFT/IFFT values are rabbit-side only: zkx's lax.fft and gnark-crypto's
-# fft.Domain.FFT agree on result[0]=sum(input) but diverge on result[i>0]
-# (convention difference under investigation; see benchmark/CONTRACT.md).
+# FFT/IFFT values represent the mathematically correct natural-in/
+# natural-out NTT; they match SP1 ref's bench AFTER fractalyze/sp1#26
+# (the bench previously misused gnark's fft.DIT/DIF — see CONTRACT.md
+# FFT/IFFT carve-out).
 _EXPECTED_HASHES: dict[tuple[str, int], str] = {
     # degree 4 (smoke test)
     ("fft", 4): "c390d98af36e6df3f0d8f8596f7157f7de7708e89f2f2607480628732fc5f18c",

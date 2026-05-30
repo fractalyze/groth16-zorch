@@ -175,17 +175,19 @@ only under `--deterministic` AND identical `r`, `s` between impls.
 Rabbit uses a fixed `r`, `s` derived from a seed; SP1 ref does the same.
 The harness's `metadata.circuit` field SHOULD carry the seed when used.
 
-**Carve-out — FFT/IFFT** (cross-impl gate NOT YET MET as of Task 1.1
-landing): rabbit's `lax.fft(s, "FFT", n, generator=5)` and SP1 ref's
-`fft.NewDomain(n).FFT(data, fft.DIT)` agree on `result[0] = sum(input)`
-but diverge for `result[i > 0]`. Same MT19937 input, same gnark
-generator (5), same domain size — so the divergence is a domain-evaluation
-or output-order convention difference between zkx's `lax.fft` and
-gnark-crypto's `fft.Domain.FFT`. Pinning the divergence to one of
-(a) coset offset vs plain, (b) DIT/DIF output ordering, (c) primitive
-root derivation needs zkx-internals review; tracked separately. Until
-then, the gate for `fft`/`ifft` is rabbit-side self-consistency only;
-the cross-impl assertion is asserted only for `msm_g1`.
+**Carve-out — FFT/IFFT** (pending [`fractalyze/sp1#26`](https://github.com/fractalyze/sp1/pull/26) merge):
+rabbit's `lax.fft(s, "FFT", n, generator=5)` produces the mathematically
+correct natural-in/natural-out NTT (verified via delta-input test —
+`lax.fft(delta[1])` returns `[1, ω, ω², …]` with ω = `5^((p-1)/n)`).
+SP1 ref's `sp1-groth16-bench` standalone bench was misusing gnark's
+API (`fft.DIT` expects bit-reversed input; the bench fed natural-order
+scalars), producing `fft`/`ifft` `output_hash` values that did not
+represent the NTT of the input. The fix in sp1#26 routes the bench
+through `fft.DIF` + `fft.BitReverse` and now matches rabbit's hashes
+byte-for-byte at log_size ∈ {4, 16, 18, 20}. Once that PR merges and
+the `sp1-ref-cuda` image (sp1#25) is rebuilt against the fixed bench,
+the cross-impl gate for `fft`/`ifft` works without further changes
+here.
 
 ## Versioning
 
