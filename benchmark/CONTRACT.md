@@ -103,13 +103,15 @@ Every harness binary MUST accept:
 | `--warmup <N>` | int | 1 | Warmup iterations (excluded from stats). |
 | `--deterministic` | flag | off | For randomized ops (groth16 prove): fix internal randomness so `output_hash` is reproducible. |
 
-Primitive-specific args (extend per impl):
+Primitive-specific args (impl-equivalent — the actual flag name varies
+across impls; bench_config's `container_args` passes whatever each impl
+expects):
 
-| Primitive | Flag | Example |
+| Primitive | Semantic | Examples |
 |---|---|---|
-| `groth16_*` | `--export_dir <path>` | `--export_dir=/data/sp1-groth16` |
-| `fft` / `ifft` / `msm_g1` | `--sizes <csv>` | `--sizes=16,18,20,22,24` (log2) |
-| `fft` / `ifft` / `msm_g1` | `--seed <u32>` | `--seed=42` (default; deterministic inputs) |
+| `groth16_*` | gnark export directory | rabbit: `--export_dir=/data/sp1-groth16` · sp1-groth16-bench: `--data-dir=/data/sp1-groth16` |
+| `fft` / `ifft` / `msm_g1` | log2 sizes to measure | rabbit: `--sizes=16,18,20,22` · sp1-groth16-bench: `--sizes=16,18,20,22` |
+| `fft` / `ifft` / `msm_g1` | MT19937 seed | both: `--seed=42` (default; deterministic inputs) |
 
 Subcommand dispatching is per-impl. Rabbit uses one Bazel target per
 harness (`//benchmark:primitives_benchmark`, `//benchmark:sp1_groth16`).
@@ -133,6 +135,73 @@ Convention:
 For deterministic-input primitives (FFT/IFFT/MSM), the fixture is the
 `(seed, log_size)` pair — no on-disk fixture; harnesses generate inputs
 in-process.
+
+## `bench_config.<target>.yaml` schema
+
+One YAML per `(impl, vendor)` image. The orchestrator
+(`benchmark-on-rented-gpu` skill, `fractalyze/claude-plugins#42`) reads
+this file to know which image to pull, what hardware to rent, and which
+benchmark targets to run inside it.
+
+```yaml
+name: <run-name>                              # human-readable identifier
+description: |
+  <free-form context for reviewers>
+
+image: ghcr.io/fractalyze/<repo>:<tag>        # image to pull on the rental host
+image_sha: <40-char git sha, optional>        # reproducibility pin (sp1@<sha>, etc.)
+
+hardware:
+  vendor: nvidia | amd                        # vast.ai / runpod offer filter
+  arch:   sm_80 | sm_90 | sm_100 | sm_120 | gfx942
+  min_gpu_ram_gb: 32
+
+budget:
+  max_dollars:        5.00                    # per-run hard cap; skill aborts at limit
+  max_runtime_minutes: 30                     # wall-clock cap
+
+fixture:                                      # optional; omit for in-process inputs
+  local_path:     /data/<host-path>           # absolute path on the dev box
+  container_path: /data/<fixture-name>        # mount point inside the image
+
+targets:                                      # one entry per binary INVOCATION in this image
+  - name: <invocation-id>                     # descriptive, free-form (e.g. "primitives", "groth16")
+    container_args:                           # appended to image ENTRYPOINT
+      - <subcommand>                          # first arg = subcommand IFF image router dispatches
+      - --flag=value
+      - --output=/output/<invocation-id>.json
+    output_path: /output/<invocation-id>.json # orchestrator fetches from here
+    produces:                                 # optional, primitives this invocation emits
+      - <primitive-key>                       # MUST match CONTRACT primitive registry
+```
+
+Schema rules:
+
+- `targets` is REQUIRED and contains ≥ 1 entry. Each entry is ONE binary
+  invocation (= one `docker run`), not one primitive. A single invocation
+  may emit multiple `benchmarks.<key>` entries in its JSON (e.g. SP1 ref's
+  `cmd/primitives` emits fft+ifft+msm_g1 from one invocation).
+- `targets[].name` is descriptive and need not match the registry. The
+  binding to the primitive registry happens via `targets[].produces` (optional;
+  used only for the orchestrator's planning + dependency checks) and via the
+  emitted JSON's `benchmarks.<key>` keys (authoritative).
+- `container_args` is appended to the image's ENTRYPOINT (overrides CMD).
+  Single-binary images (no subcommand router, e.g. rabbit's
+  `python -m benchmark.sp1_groth16`) take flags only. Multi-binary images
+  (e.g. sp1-ref's bundled Go + Rust) use the first arg as the subcommand
+  keyword routed by the ENTRYPOINT wrapper.
+- Result placement (target branch, commit path) is owned by the orchestrator,
+  NOT by this file. The skill merges per-target JSONs into one consolidated
+  `BenchmarkReport` written to `benchmark/results/<host>-<sha>-<ts>.json` in
+  the parent repo.
+- `image_sha` is optional but RECOMMENDED for cross-impl images (e.g. an
+  image built from `fractalyze/sp1@<ref-sha>`) so a measurement run pins
+  to a specific binary build.
+
+Adding a primitive to an existing image is an additive change (append a
+`targets[]` entry). Adding a new image is a new yaml file. Changing
+`hardware.arch` is breaking — file a new yaml for the new arch rather
+than mutating an in-use config.
 
 ## Canonical `output_hash` rules
 
