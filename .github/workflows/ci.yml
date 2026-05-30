@@ -4,15 +4,16 @@ permissions: read-all
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "benchmark-with-jax-v2"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "benchmark-with-jax-v2"]
 
 # Cancel in-progress runs for PRs (same head branch), but never cancel
-# pushes to main so that every merge gets a full CI run.
+# pushes to main or to an integration branch (benchmark-with-jax-v2)
+# so that every merge gets a full CI run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/benchmark-with-jax-v2' }}
 
 jobs:
   test-cpu:
