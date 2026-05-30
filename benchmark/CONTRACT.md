@@ -103,13 +103,15 @@ Every harness binary MUST accept:
 | `--warmup <N>` | int | 1 | Warmup iterations (excluded from stats). |
 | `--deterministic` | flag | off | For randomized ops (groth16 prove): fix internal randomness so `output_hash` is reproducible. |
 
-Primitive-specific args (extend per impl):
+Primitive-specific args (impl-equivalent — the actual flag name varies
+across impls; bench_config's `container_args` passes whatever each impl
+expects):
 
-| Primitive | Flag | Example |
+| Primitive | Semantic | Examples |
 |---|---|---|
-| `groth16_*` | `--export_dir <path>` | `--export_dir=/data/sp1-groth16` |
-| `fft` / `ifft` / `msm_g1` | `--sizes <csv>` | `--sizes=16,18,20,22,24` (log2) |
-| `fft` / `ifft` / `msm_g1` | `--seed <u32>` | `--seed=42` (default; deterministic inputs) |
+| `groth16_*` | gnark export directory | rabbit: `--export_dir=/data/sp1-groth16` · sp1-groth16-bench: `--data-dir=/data/sp1-groth16` |
+| `fft` / `ifft` / `msm_g1` | log2 sizes to measure | rabbit: `--sizes=16,18,20,22` · sp1-groth16-bench: `--sizes=16,18,20,22` |
+| `fft` / `ifft` / `msm_g1` | MT19937 seed | both: `--seed=42` (default; deterministic inputs) |
 
 Subcommand dispatching is per-impl. Rabbit uses one Bazel target per
 harness (`//benchmark:primitives_benchmark`, `//benchmark:sp1_groth16`).
