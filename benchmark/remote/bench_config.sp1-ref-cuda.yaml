@@ -1,0 +1,94 @@
+# Benchmark-on-rented-gpu plugin config for the sp1-ref-cuda image
+# (built and published by fractalyze/sp1#25 — not yet available).
+#
+# Bundles SP1 ref's Go (sp1-groth16-bench, gnark+icicle) AND Rust
+# (sp1-gpu/crates/*/bin/*_bench.rs) binaries in one CUDA image so the
+# ~200MB icicle install is amortized across all primitives. The
+# ENTRYPOINT wrapper routes the first container_arg to the right binary.
+#
+# image_sha pins the SP1 ref source the image was built from so a
+# measurement run is reproducible week-to-week.
+#
+# See benchmark/CONTRACT.md ("bench_config.<target>.yaml schema").
+
+name: sp1-ref-cuda
+description: |
+  SP1 ref's cross-impl control binaries on NVIDIA sm_120 (RTX 5090).
+  Sourced from fractalyze/sp1@ref; produces `gnark`-tagged JSONs (Go,
+  sp1-groth16-bench) AND `sp1-ref`-tagged JSONs (Rust, sp1-gpu) under
+  the same image. Routed by sp1#25's planned ENTRYPOINT dispatcher.
+
+# Image not yet published — sp1#25 owns the build.
+image: ghcr.io/fractalyze/sp1-ref:cuda-latest
+image_sha: 7ba51b50c9064c0bd9b22abf1327b76f0346edc5  # fractalyze/sp1@ref HEAD as of 2026-05-30
+
+hardware:
+  vendor: nvidia
+  arch: sm_120
+  min_gpu_ram_gb: 32
+
+budget:
+  max_dollars: 5.00
+  max_runtime_minutes: 30
+
+fixture:
+  local_path: /data/ryan/testdata/sp1-groth16
+  container_path: /data/sp1-groth16
+
+targets:
+  # Go side — sp1-groth16-bench (metadata.implementation = "gnark")
+
+  - name: groth16
+    container_args:
+      - groth16
+      - --data-dir=/data/sp1-groth16
+      - --deterministic
+      - --warmup=2
+      - --iterations=10
+      - --zkbench
+      - --output=/output/groth16.json
+    output_path: /output/groth16.json
+    produces: [groth16_sp1_verifier]
+
+  - name: solve
+    container_args:
+      - solve
+      - --data-dir=/data/sp1-groth16
+      - --warmup=1
+      - --iterations=3
+      - --zkbench
+      - --output=/output/solve.json
+    output_path: /output/solve.json
+    produces: [groth16_sp1_verifier_solver]
+
+  - name: primitives
+    container_args:
+      - primitives
+      - --sizes=20
+      - --iterations=5
+      - --warmup=1
+      - --output=/output/primitives.json
+    output_path: /output/primitives.json
+    produces: [fft, ifft, msm_g1]
+
+  # Rust side — sp1-gpu binaries (metadata.implementation = "sp1-ref")
+
+  - name: logup_gkr
+    container_args: [logup_gkr_zkbench, --output=/output/logup_gkr.json]
+    output_path: /output/logup_gkr.json
+    produces: [logup_gkr]
+
+  - name: zerocheck
+    container_args: [zerocheck_bench, --output=/output/zerocheck.json]
+    output_path: /output/zerocheck.json
+    produces: [zerocheck]
+
+  - name: merkle
+    container_args: [merkle_bench, --output=/output/merkle.json]
+    output_path: /output/merkle.json
+    produces: [merkle_commit]
+
+  - name: poseidon2
+    container_args: [poseidon2_bench, --output=/output/poseidon2.json]
+    output_path: /output/poseidon2.json
+    produces: [poseidon2]
