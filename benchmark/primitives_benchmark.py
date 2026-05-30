@@ -88,12 +88,9 @@ _EXPECTED_HASHES: dict[tuple[str, int], str] = {
 def _hash_scalars(arr) -> str:
     """SHA-256 of an fr.Element array, gnark canonical form: standard-form
     big-endian 32 bytes per element, concatenated in array order."""
-    arr_np = np.asarray(arr)
-    if arr_np.ndim == 0:
-        arr_np = arr_np.reshape(1)
     h = hashlib.sha256()
-    for i in range(arr_np.shape[0]):
-        h.update((int(arr_np[i]) % BN254_FR_MODULUS).to_bytes(32, "big"))
+    for val in np.asarray(arr).ravel():
+        h.update(int(val).to_bytes(32, "big"))
     return h.hexdigest()
 
 
@@ -101,8 +98,7 @@ def _hash_g1_affine(point) -> str:
     """SHA-256 of a G1Affine point in gnark Marshal() canonical form
     (BN254 uses 64-byte uncompressed: x big-endian || y big-endian, both
     in standard form)."""
-    point_np = np.asarray(point)
-    item = point_np.item() if point_np.ndim == 0 else point_np[0]
+    item = np.asarray(point).item()
     x_mont, y_mont = item.raw
     x = (int(x_mont) * _MONT_R_INV_FP) % BN254_FP_MODULUS
     y = (int(y_mont) * _MONT_R_INV_FP) % BN254_FP_MODULUS
