@@ -36,11 +36,21 @@ py_test(
     name = "groth16_verify_test",
     srcs = ["groth16_verify_test.py"],
     data = [":testdata"],
+    # verify() uses lax.msm which has GPU-only thunk in jax_fork; cuda
+    # must be the default device (listed first) so the call lands on
+    # GPU rather than the unimplemented CPU path.
+    env = {
+        "JAX_PLATFORMS": "cuda,cpu",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+    },
+    tags = ["gpu"],
     deps = [
         "//rabbitsnark:gnark",
         "//rabbitsnark:groth16",
         "@pypi//absl_py",
         "@pypi//jax",
+        "@pypi//jax_cuda12_plugin",
+        "@pypi//jax_cuda12_pjrt",
         "@pypi//zk_dtypes",
     ],
 )
@@ -63,15 +73,25 @@ py_test(
     name = "e2e_test",
     srcs = ["e2e_test.py"],
     data = _E2E_DATA,
-    deps = _E2E_DEPS,
+    # prove() + verify() use GPU-only lax.msm / lax.ntt in jax_fork;
+    # cuda must be default (listed first) so the calls land on GPU.
+    env = {
+        "JAX_PLATFORMS": "cuda,cpu",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+    },
+    tags = ["gpu"],
+    deps = _E2E_DEPS + ["@pypi//jax_cuda12_plugin", "@pypi//jax_cuda12_pjrt"],
 )
 
 py_test(
     name = "e2e_gpu_test",
     srcs = ["e2e_test.py"],
     data = _E2E_DATA,
-    env = {"JAX_PLATFORMS": "cpu,cuda"},
+    env = {
+        "JAX_PLATFORMS": "cuda,cpu",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+    },
     main = "e2e_test.py",
     tags = ["gpu"],
-    deps = _E2E_DEPS + ["@pypi//zkx_cuda_pjrt"],
+    deps = _E2E_DEPS + ["@pypi//jax_cuda12_plugin", "@pypi//jax_cuda12_pjrt"],
 )

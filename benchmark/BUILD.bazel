@@ -38,7 +38,8 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":sp1_groth16_lib",
-        "@pypi//zkx_cuda_pjrt",
+        "@pypi//jax_cuda12_plugin",
+        "@pypi//jax_cuda12_pjrt",
     ],
 )
 
@@ -63,17 +64,27 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":primitives_benchmark_lib",
-        "@pypi//zkx_cuda_pjrt",
+        "@pypi//jax_cuda12_plugin",
+        "@pypi//jax_cuda12_pjrt",
     ],
 )
 
 py_test(
     name = "benchmark_smoke_test",
     srcs = ["testing/benchmark_smoke_test.py"],
+    # primitives_benchmark uses lax.ntt + lax.msm which are GPU-only in
+    # jax_fork. cuda must be default; preallocate=false keeps the test
+    # from hoarding the GPU when run alongside e2e_gpu_test.
+    env = {
+        "JAX_PLATFORMS": "cuda,cpu",
+        "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+    },
     tags = ["gpu"],
     deps = [
         ":primitives_benchmark_lib",
         "@pypi//absl_py",
+        "@pypi//jax_cuda12_plugin",
+        "@pypi//jax_cuda12_pjrt",
         "@pypi//zkbench",
     ],
 )

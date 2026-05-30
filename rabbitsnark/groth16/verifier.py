@@ -179,20 +179,16 @@ def verify(
         dtype=bn254_g2_affine,
     )
 
-    # All verification ops run on CPU (pairing_check only has CPU
-    # legalization, and lax.msm works on both CPU and GPU).
+    # msm has GPU-only thunk; pairing_check is CPU-only.
+    vk_x_affine = lax.msm(msm_scalars, msm_points)
+    vk_x_np = np.array(vk_x_affine).item()
+    vk_x_coords = vk_x_np.raw
+    vk_x_x, vk_x_y = int(vk_x_coords[0]), int(vk_x_coords[1])
+
     cpu = jax.devices("cpu")[0]
     with jax.default_device(cpu):
-        vk_x_affine = lax.msm(msm_scalars, msm_points)
-
-        # Extract vk_x coordinates from JAX result
-        vk_x_np = np.array(vk_x_affine).item()
-        vk_x_coords = vk_x_np.raw
-        vk_x_x, vk_x_y = int(vk_x_coords[0]), int(vk_x_coords[1])
-
         g1_points_data[2] = bn254_g1_affine((vk_x_x, vk_x_y))
         g1_points = jnp.array(g1_points_data, dtype=bn254_g1_affine)
-
         result = lax.pairing_check(g1_points, g2_points)
     return bool(result)
 

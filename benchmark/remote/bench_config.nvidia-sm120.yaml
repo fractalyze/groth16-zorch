@@ -1,0 +1,45 @@
+# Benchmark-on-rented-gpu plugin config for the rabbit-cuda image on
+# NVIDIA sm_120 (RTX 5090). One target today (sp1-groth16 prove);
+# add to `targets:` as rabbit-side primitives get standalone harnesses.
+# See benchmark/CONTRACT.md ("bench_config.<target>.yaml schema").
+
+name: rabbit-nvidia-sm120
+description: |
+  Rabbit's groth16 + primitives suite on NVIDIA sm_120 (RTX 5090) via
+  jax_fork CUDA stack. The NVIDIA reference for the cross-impl gate in
+  fractalyze/rabbitsnark-py#77 (and the C2 reference in #74).
+
+image: ghcr.io/fractalyze/rabbitsnark-py:rabbit-cuda-latest
+
+hardware:
+  vendor: nvidia
+  arch: sm_120
+  min_gpu_ram_gb: 32
+
+budget:
+  max_dollars: 5.00
+  max_runtime_minutes: 30
+
+fixture:
+  # local_path is the host directory holding the gnark export tree
+  # (witness_full.bin, term matrices, …). Override per host via the
+  # orchestrator's --fixture-dir flag or RABBIT_FIXTURE_DIR env. The
+  # default is a repo-relative path for documentation only.
+  local_path: ./testdata/sp1-groth16
+  container_path: /data/sp1-groth16
+
+targets:
+  # rabbit-cuda's ENTRYPOINT is `python -m benchmark.sp1_groth16` — no
+  # subcommand router (single-binary image), so container_args are
+  # passed as flags only. When standalone primitives (FFT/IFFT/MSM)
+  # harnesses land, either add a subcommand wrapper or one yaml per
+  # binary.
+  - name: groth16
+    container_args:
+      - --export_dir=/data/sp1-groth16
+      - --deterministic
+      - --warmup=2
+      - --iterations=10
+      - --output=/output/groth16.json
+    output_path: /output/groth16.json
+    produces: [groth16_sp1_verifier]

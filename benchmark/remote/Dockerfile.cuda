@@ -1,0 +1,84 @@
+# syntax=docker/dockerfile:1.6
+#
+# Rabbit groth16 benchmark image for NVIDIA GPUs (CUDA 12.x). Mirrors
+# Dockerfile.rocm structurally; diverges only on base image + lockfile.
+#
+# Two stages:
+#   1. solver-build (ubuntu:22.04 + bazel) — produces libr1cs_solver.so.
+#      Hardware-agnostic (MLIR→LLVM→CPU); duplicate of Dockerfile.rocm's
+#      stage 1.
+#   2. runtime (nvidia/cuda) — Python 3.11 + jax_fork CUDA wheels. The
+#      `[with-cuda]` extra in requirements_lock_3_11.txt pulls the 13
+#      nvidia-* runtime packages; the base image supplies cuDNN at the
+#      OS level as fallback.
+
+ARG BAZEL_VERSION=7.4.1
+# Matches the cuDNN version pinned in requirements_lock_3_11.txt
+# (nvidia-cudnn-cu12==9.22.0.52, cuDNN 9.x — needs CUDA 12.9 runtime).
+ARG CUDA_TAG=12.9.1-cudnn-runtime-ubuntu22.04
+
+# ----------------------------------------------------------------------
+# Stage 1: bazel-build libr1cs_solver.so
+# ----------------------------------------------------------------------
+FROM ubuntu:22.04 AS solver-build
+
+ARG BAZEL_VERSION
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git build-essential \
+        python3.11 python3.11-dev python3.11-venv \
+        unzip zip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-linux-x86_64" \
+        -o /usr/local/bin/bazel \
+    && chmod +x /usr/local/bin/bazel
+
+WORKDIR /work
+COPY . /work
+RUN bazel build -c opt @r1cs_solver//solver:libr1cs_solver.so \
+    && cp bazel-bin/external/r1cs_solver/solver/libr1cs_solver.so /work/libr1cs_solver.so
+
+# ----------------------------------------------------------------------
+# Stage 2: CUDA runtime + rabbit
+# ----------------------------------------------------------------------
+FROM nvidia/cuda:${CUDA_TAG} AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl \
+        python3.11 python3.11-dev python3.11-venv \
+        libpython3.11 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+
+WORKDIR /rabbit
+
+# CUDA lockfile carries `jax-cuda12-plugin[with-cuda]` which pulls the
+# 13 nvidia-* runtime wheels — they sit alongside the cuDNN provided
+# by the base image. JAX's plugin discovery prefers the pip-installed
+# libraries via rpath, so the base-image cuDNN is the fallback for
+# anything the wheels don't bundle (in practice, none on CUDA 12.x).
+COPY requirements_lock_3_11.txt /rabbit/requirements_lock_3_11.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements_lock_3_11.txt
+
+COPY rabbitsnark/ /rabbit/rabbitsnark/
+COPY benchmark/   /rabbit/benchmark/
+
+COPY --from=solver-build /work/libr1cs_solver.so /opt/lib/libr1cs_solver.so
+
+ENV PYTHONPATH=/rabbit
+ENV R1CS_SOLVER_LIB=/opt/lib/libr1cs_solver.so
+ENV XLA_PYTHON_CLIENT_PREALLOCATE=false
+ENV JAX_PLATFORMS=cuda,cpu
+
+RUN mkdir -p /data/sp1-groth16 /output
+
+ENTRYPOINT ["python", "-m", "benchmark.sp1_groth16"]
+CMD ["--export_dir=/data/sp1-groth16", \
+     "--deterministic", "--warmup=2", "--iterations=10", \
+     "--output=/output/groth16.json"]

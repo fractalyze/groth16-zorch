@@ -1,0 +1,43 @@
+# Benchmark-on-rented-gpu plugin config for the rabbit-rocm image on
+# AMD gfx942 (MI300). Mirrors bench_config.nvidia-sm120.yaml structurally;
+# diverges on image (ROCm build) and hardware arch.
+# See benchmark/CONTRACT.md ("bench_config.<target>.yaml schema").
+
+name: rabbit-amd-gfx942
+description: |
+  Rabbit's groth16 + primitives suite on AMD gfx942 (MI300) via jax_fork
+  ROCm stack. Routed through the AMD-provider skill
+  (fractalyze/claude-plugins#45) since vast.ai is NVIDIA-only.
+
+image: ghcr.io/fractalyze/rabbitsnark-py:rabbit-rocm-latest
+
+hardware:
+  vendor: amd
+  arch: gfx942
+  min_gpu_ram_gb: 32
+
+budget:
+  max_dollars: 5.00
+  max_runtime_minutes: 30
+
+fixture:
+  # local_path is the host directory holding the gnark export tree
+  # (witness_full.bin, term matrices, …). Override per host via the
+  # orchestrator's --fixture-dir flag or RABBIT_FIXTURE_DIR env. The
+  # default is a repo-relative path for documentation only.
+  local_path: ./testdata/sp1-groth16
+  container_path: /data/sp1-groth16
+
+targets:
+  # rabbit-rocm's ENTRYPOINT is `python -m benchmark.sp1_groth16` (same
+  # single-binary pattern as the CUDA image) — container_args are flags
+  # only, no subcommand router.
+  - name: groth16
+    container_args:
+      - --export_dir=/data/sp1-groth16
+      - --deterministic
+      - --warmup=2
+      - --iterations=10
+      - --output=/output/groth16.json
+    output_path: /output/groth16.json
+    produces: [groth16_sp1_verifier]
