@@ -1,27 +1,16 @@
 # syntax=docker/dockerfile:1.6
 #
-# Rabbit groth16 benchmark image for AMD GPUs (ROCm 7.x).
-#
-# Built and pushed by `image_build.sh` in this directory, pulled by the
-# `benchmark-on-rented-gpu` plugin (fractalyze/claude-plugins#43) onto a
-# vast.ai gfx942 (MI300) host.
+# Rabbit groth16 benchmark image for AMD GPUs (ROCm 7.x). Mirrors
+# Dockerfile.cuda structurally; diverges only on base image + lockfile.
 #
 # Two stages:
-#   1. solver-build (ubuntu:22.04 + bazel) — produces
-#      `libr1cs_solver.so` from the rabbit checkout via the same
-#      `@r1cs_solver//solver:libr1cs_solver.so` target we build for
-#      local NVIDIA development. The solver is hardware-agnostic
-#      (MLIR → LLVM → CPU object), so the same .so works for both
-#      CUDA and ROCm runtime targets.
-#
-#   2. runtime (rocm/dev-ubuntu-22.04:7.2.3-complete) — Python 3.11 +
-#      jax_fork ROCm wheels from `requirements_rocm_lock_3_11.txt`,
-#      rabbit source, and the .so from stage 1. The base image
-#      provides ROCm 7.2.3 system libraries; we deliberately skip the
-#      `[with-rocm]` wheel extra because its `amd_rocm_hip_runtime_*`
-#      dependencies are AMD-internal and not on PyPI (see personal memo
-#      `jax-cuda12-plugin-needs-with-cuda-extra-for-runtime-libs-2026-05-29`
-#      for the parallel CUDA case).
+#   1. solver-build (ubuntu:22.04 + bazel) — produces libr1cs_solver.so.
+#      Hardware-agnostic (MLIR→LLVM→CPU); duplicate of Dockerfile.cuda's
+#      stage 1.
+#   2. runtime (rocm/dev-ubuntu) — Python 3.11 + jax_fork ROCm wheels.
+#      `[with-rocm]` extra is intentionally skipped because its
+#      `amd_rocm_hip_runtime_*` deps are AMD-internal (not on PyPI);
+#      the base image's ROCm 7.2.3 system libraries cover the runtime.
 
 ARG BAZEL_VERSION=7.4.1
 ARG ROCM_TAG=7.2.3-complete
@@ -76,8 +65,8 @@ WORKDIR /rabbit
 # the wheel does not pull amd_rocm_* runtime packages (no [with-rocm]
 # extra resolvable on PyPI).
 COPY requirements_rocm_lock_3_11.txt /rabbit/requirements_rocm_lock_3_11.txt
-RUN pip install --upgrade pip \
-    && pip install -r requirements_rocm_lock_3_11.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements_rocm_lock_3_11.txt
 
 # Rabbit source. Only the directories the benchmark actually needs.
 COPY rabbitsnark/ /rabbit/rabbitsnark/

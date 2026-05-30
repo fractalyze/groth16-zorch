@@ -21,7 +21,11 @@ budget:
   max_runtime_minutes: 30
 
 fixture:
-  local_path: /data/ryan/testdata/sp1-groth16
+  # local_path is the host directory holding the gnark export tree
+  # (witness_full.bin, term matrices, …). Override per host via the
+  # orchestrator's --fixture-dir flag or RABBIT_FIXTURE_DIR env. The
+  # default is a repo-relative path for documentation only.
+  local_path: ./testdata/sp1-groth16
   container_path: /data/sp1-groth16
 
 targets:

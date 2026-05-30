@@ -1,27 +1,16 @@
 # syntax=docker/dockerfile:1.6
 #
-# Rabbit groth16 benchmark image for NVIDIA GPUs (CUDA 12.x).
-#
-# Mirrors Dockerfile.rocm structure for symmetric C2-vs-C3 measurement
-# through the `benchmark-on-rented-gpu` plugin
-# (fractalyze/claude-plugins#43). Same source, same solver build, same
-# benchmark entrypoint — only the runtime base image and the lockfile
-# differ.
+# Rabbit groth16 benchmark image for NVIDIA GPUs (CUDA 12.x). Mirrors
+# Dockerfile.rocm structurally; diverges only on base image + lockfile.
 #
 # Two stages:
-#   1. solver-build (ubuntu:22.04 + bazel) — same as Dockerfile.rocm.
-#      Produces `libr1cs_solver.so` from rabbit source. The solver is
-#      MLIR→LLVM→CPU, hardware-agnostic, so this stage could be
-#      shared between Dockerfile.cuda and Dockerfile.rocm via a
-#      common base image build if image build time becomes a bottleneck.
-#
-#   2. runtime (nvidia/cuda:12.x-cudnn-runtime-ubuntu22.04) —
-#      Python 3.11 + jax_fork CUDA wheels from
-#      `requirements_lock_3_11.txt` (which carries the `[with-cuda]`
-#      extra and pulls 13 nvidia-* runtime packages — see personal memo
-#      `jax-cuda12-plugin-needs-with-cuda-extra-for-runtime-libs-2026-05-29`).
-#      The CUDA base image provides cuDNN at the OS level; the wheel
-#      runtime libs ride on top.
+#   1. solver-build (ubuntu:22.04 + bazel) — produces libr1cs_solver.so.
+#      Hardware-agnostic (MLIR→LLVM→CPU); duplicate of Dockerfile.rocm's
+#      stage 1.
+#   2. runtime (nvidia/cuda) — Python 3.11 + jax_fork CUDA wheels. The
+#      `[with-cuda]` extra in requirements_lock_3_11.txt pulls the 13
+#      nvidia-* runtime packages; the base image supplies cuDNN at the
+#      OS level as fallback.
 
 ARG BAZEL_VERSION=7.4.1
 # Matches the cuDNN version pinned in requirements_lock_3_11.txt
@@ -74,8 +63,8 @@ WORKDIR /rabbit
 # libraries via rpath, so the base-image cuDNN is the fallback for
 # anything the wheels don't bundle (in practice, none on CUDA 12.x).
 COPY requirements_lock_3_11.txt /rabbit/requirements_lock_3_11.txt
-RUN pip install --upgrade pip \
-    && pip install -r requirements_lock_3_11.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements_lock_3_11.txt
 
 COPY rabbitsnark/ /rabbit/rabbitsnark/
 COPY benchmark/   /rabbit/benchmark/

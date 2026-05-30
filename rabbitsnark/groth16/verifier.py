@@ -179,9 +179,7 @@ def verify(
         dtype=bn254_g2_affine,
     )
 
-    # jax_fork split: msm has GPU thunk only; pairing_check has CPU
-    # legalization only. Run msm on default device (GPU), materialize,
-    # then pairing_check on CPU.
+    # msm has GPU-only thunk; pairing_check is CPU-only.
     vk_x_affine = lax.msm(msm_scalars, msm_points)
     vk_x_np = np.array(vk_x_affine).item()
     vk_x_coords = vk_x_np.raw

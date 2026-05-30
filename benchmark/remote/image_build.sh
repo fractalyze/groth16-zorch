@@ -33,6 +33,11 @@ cd "$REPO_ROOT"
 REGISTRY="${REGISTRY:-ghcr.io}"
 IMAGE="${IMAGE:-fractalyze/rabbitsnark-py}"
 SHA=$(git rev-parse --short HEAD)
+# Warn when the tree has uncommitted changes — TAG_SHA otherwise advertises
+# reproducibility the image doesn't actually have.
+if ! git diff-index --quiet HEAD --; then
+  echo "WARNING: working tree is dirty; image content will not match git $SHA." >&2
+fi
 TAG_SHA="rabbit-${TARGET}-${SHA}"
 TAG_LATEST="rabbit-${TARGET}-latest"
 
@@ -82,7 +87,10 @@ push_impl() {
 
 case "$cmd" in
   build) build "$@" ;;
-  push)  push_impl ;;
+  push)
+    [ $# -gt 0 ] && { echo "Unknown push arg: $*" >&2; exit 2; }
+    push_impl
+    ;;
   *)
     echo "Usage: $0 $TARGET {build [--push] | push}" >&2
     exit 2
