@@ -1,0 +1,42 @@
+# Benchmark-on-rented-gpu plugin config for the rabbit-cuda image on
+# NVIDIA sm_80 (A100 Ampere). Sibling to bench_config.nvidia-sm120.yaml
+# — diverges only on `hardware.arch` and the description. Schema +
+# targets identical so a cross-device sweep is apples-to-apples.
+# See benchmark/CONTRACT.md ("bench_config.<target>.yaml schema").
+
+name: rabbit-nvidia-sm80
+description: |
+  Rabbit's groth16 prove on NVIDIA sm_80 (A100, Ampere) via jax_fork
+  CUDA stack. Part of fractalyze/rabbitsnark-py#77 Phase 3 NVIDIA-SKU
+  sweep — A100 is the prior-gen data-center reference.
+  Caveat: lax.msm is a hand-written CUDA kernel, not compiler-routed;
+  cross-SKU numbers reflect kernel arch-portability + raw GPU
+  throughput, NOT compiler IR adaptation.
+
+image: ghcr.io/fractalyze/rabbitsnark-py:rabbit-cuda-latest
+
+hardware:
+  vendor: nvidia
+  arch: sm_80
+  # A100 SKUs are 40GB SXM4 / 40GB PCIe / 80GB SXM4 / 80GB PCIe.
+  # Min 32 GB covers all and groth16 prove fits comfortably.
+  min_gpu_ram_gb: 32
+
+budget:
+  max_dollars: 5.00
+  max_runtime_minutes: 30
+
+fixture:
+  local_path: ./testdata/sp1-groth16
+  container_path: /data/sp1-groth16
+
+targets:
+  - name: groth16
+    container_args:
+      - --export_dir=/data/sp1-groth16
+      - --deterministic
+      - --warmup=2
+      - --iterations=10
+      - --output=/output/groth16.json
+    output_path: /output/groth16.json
+    produces: [groth16_sp1_verifier]
