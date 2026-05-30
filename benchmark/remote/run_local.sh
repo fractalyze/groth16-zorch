@@ -18,7 +18,7 @@
 # See benchmark/CONTRACT.md ("Local sweep orchestrator") for the
 # orchestrator's contract.
 
-set -uo pipefail
+set -euo pipefail
 
 REPO_ROOT=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 cd "$REPO_ROOT"

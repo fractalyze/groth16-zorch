@@ -58,10 +58,22 @@ def run_one(config_path: Path, out_dir: Path) -> int:
     print(f"[{cfg['name']}] pulling {image}", file=sys.stderr)
     pull = subprocess.run(["docker", "pull", image], check=False)
     if pull.returncode != 0:
-        print(
-            f"[{cfg['name']}] pull failed (image may be unpublished)", file=sys.stderr
+        # Fall back to a locally-tagged image if available — supports
+        # iterating on an unpublished image (e.g. sp1-ref-cuda before
+        # fractalyze/sp1#25 publishes).
+        inspect = subprocess.run(
+            ["docker", "image", "inspect", image], capture_output=True, check=False
         )
-        return pull.returncode
+        if inspect.returncode != 0:
+            print(
+                f"[{cfg['name']}] pull failed and no local image found",
+                file=sys.stderr,
+            )
+            return pull.returncode
+        print(
+            f"[{cfg['name']}] pull failed; using local image {image}",
+            file=sys.stderr,
+        )
 
     failures = 0
     for target in targets:
@@ -77,7 +89,7 @@ def run_one(config_path: Path, out_dir: Path) -> int:
             + _docker_gpu_args(vendor)
             + mounts
             + [image]
-            + list(target["container_args"])
+            + list(target.get("container_args", []))
         )
         print(f"[{cfg['name']}/{name}] {' '.join(cmd)}", file=sys.stderr)
         rc = subprocess.run(cmd, check=False).returncode

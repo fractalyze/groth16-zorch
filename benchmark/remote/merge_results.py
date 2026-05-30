@@ -37,13 +37,13 @@ def merge(paths: list[str]) -> dict[str, Any]:
     out: dict[str, Any] = {"metadata": None, "benchmarks": {}}
     for path in paths:
         data = json.loads(Path(path).read_text())
-        meta = data.get("metadata", {})
+        meta = data.get("metadata") or {}
         impl = meta.get("implementation", "unknown")
         # Pick the first report's metadata as the run's metadata; per-impl
         # metadata lives inside each benchmark entry.
         if out["metadata"] is None:
             out["metadata"] = meta
-        for prim_key, result in data.get("benchmarks", {}).items():
+        for prim_key, result in (data.get("benchmarks") or {}).items():
             merged_key = f"{impl}.{prim_key}"
             if merged_key in out["benchmarks"]:
                 print(
@@ -52,7 +52,7 @@ def merge(paths: list[str]) -> dict[str, Any]:
                 )
             # Stash the source impl + path in the merged entry's metadata
             # so the consolidated JSON is self-describing.
-            entry_meta = dict(result.get("metadata", {}))
+            entry_meta = dict(result.get("metadata") or {})
             entry_meta.setdefault("implementation", impl)
             entry_meta.setdefault("source_json", Path(path).name)
             merged_result = dict(result)
