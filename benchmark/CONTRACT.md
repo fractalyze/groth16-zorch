@@ -146,18 +146,19 @@ across implementations is meaningful.
 | Element type | Canonical byte representation |
 |---|---|
 | Scalar (BN254 `fr.Element`) | 32 bytes, big-endian, **standard form** (NOT Montgomery) |
-| G1 affine point | 32 bytes (gnark-crypto compressed form: x with sign of y in top bits) |
-| G1 projective | normalize to affine first, then compress |
-| G2 affine point | 64 bytes (gnark-crypto compressed form) |
+| G1 affine point | 64 bytes, **uncompressed**: x big-endian (32) ‖ y big-endian (32), both in standard form. `gnark-crypto.G1Affine.Marshal()` returns this shape for BN254. |
+| G1 projective | normalize to affine first, then encode as above |
+| G2 affine point | 128 bytes, uncompressed: x ‖ y where each is a 2-element Fp2 in big-endian standard form |
 | Vector of any of the above | concatenation of element canonical bytes, in array order |
 
 Hash: SHA-256 over the canonical byte stream. Hex-encoded, lowercase, no
 prefix.
 
-**Rabbit-side migration** (Task 1.1): `benchmark/primitives_benchmark.py`'s
-current `_hash_array` hashes Montgomery-form raw bytes — that does NOT
-match. Convert to standard form (`lax.convert_element_type(x, bn254_sf)`)
-and serialize big-endian per limb before hashing.
+Rabbit's `benchmark/primitives_benchmark.py` aligns to this form in
+Task 1.1: `_hash_scalars` for fr arrays, `_hash_g1_affine` for the MSM
+result point. The Montgomery → standard conversion for G1 happens in
+Python (the `lax.convert_element_type(g1_mont → g1_std)` lowering in
+zkx is currently broken — see open issue).
 
 **Cross-impl gate** (orchestrator-enforced):
 
@@ -173,6 +174,18 @@ fixture sha256.
 only under `--deterministic` AND identical `r`, `s` between impls.
 Rabbit uses a fixed `r`, `s` derived from a seed; SP1 ref does the same.
 The harness's `metadata.circuit` field SHOULD carry the seed when used.
+
+**Carve-out — FFT/IFFT** (cross-impl gate NOT YET MET as of Task 1.1
+landing): rabbit's `lax.fft(s, "FFT", n, generator=5)` and SP1 ref's
+`fft.NewDomain(n).FFT(data, fft.DIT)` agree on `result[0] = sum(input)`
+but diverge for `result[i > 0]`. Same MT19937 input, same gnark
+generator (5), same domain size — so the divergence is a domain-evaluation
+or output-order convention difference between zkx's `lax.fft` and
+gnark-crypto's `fft.Domain.FFT`. Pinning the divergence to one of
+(a) coset offset vs plain, (b) DIT/DIF output ordering, (c) primitive
+root derivation needs zkx-internals review; tracked separately. Until
+then, the gate for `fft`/`ifft` is rabbit-side self-consistency only;
+the cross-impl assertion is asserted only for `msm_g1`.
 
 ## Versioning
 
