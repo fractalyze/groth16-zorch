@@ -1,23 +1,18 @@
-# Benchmark-on-rented-gpu plugin config for rabbitsnark-py groth16
-# on NVIDIA sm_120 (RTX 5090, MI300-class compute).
-#
-# Read by the `benchmark-on-rented-gpu` plugin
-# (fractalyze/claude-plugins#43). Sibling to bench_config.amd-gfx942.yaml.
+# Benchmark-on-rented-gpu plugin config for the rabbit-cuda image on
+# NVIDIA sm_120 (RTX 5090). One target today (sp1-groth16 prove);
+# add to `targets:` as rabbit-side primitives get standalone harnesses.
+# See benchmark/CONTRACT.md ("bench_config.<target>.yaml schema").
 
-name: rabbit-groth16-nvidia
+name: rabbit-nvidia-sm120
 description: |
-  sp1-groth16 prove + verify on NVIDIA sm_120 (RTX 5090) via the
-  jax_fork CUDA stack. The C2 reference for the C2↔C3 fair comparison
-  in fractalyze/rabbitsnark-py#74. Running C2 under the same
-  containerized plugin path as C3 removes the dev-laptop vs
-  rental-machine environment drift the prior C2 measurement carried.
+  Rabbit's groth16 + primitives suite on NVIDIA sm_120 (RTX 5090) via
+  jax_fork CUDA stack. The NVIDIA reference for the cross-impl gate in
+  fractalyze/rabbitsnark-py#77 (and the C2 reference in #74).
 
-image: ghcr.io/fractalyze/rabbitsnark-py:groth16-cuda-latest
+image: ghcr.io/fractalyze/rabbitsnark-py:rabbit-cuda-latest
 
 hardware:
   vendor: nvidia
-  # sm_120 = RTX 5090 / Blackwell. Vast.ai may not have many offers;
-  # fall back to sm_90 (H100) if needed by relaxing this filter.
   arch: sm_120
   min_gpu_ram_gb: 32
 
@@ -29,14 +24,18 @@ fixture:
   local_path: /data/ryan/testdata/sp1-groth16
   container_path: /data/sp1-groth16
 
-output:
-  container_path: /output/c2_nvidia_result.json
-  download_to_branch: bench/c2-sm120-{sha}-{ts}
-  commit_path: benchmark/results/c2-sm120-{sha}-{ts}.json
-
-container_args:
-  - --export_dir=/data/sp1-groth16
-  - --deterministic
-  - --warmup=2
-  - --iterations=10
-  - --output=/output/c2_nvidia_result.json
+targets:
+  # rabbit-cuda's ENTRYPOINT is `python -m benchmark.sp1_groth16` — no
+  # subcommand router (single-binary image), so container_args are
+  # passed as flags only. When standalone primitives (FFT/IFFT/MSM)
+  # harnesses land, either add a subcommand wrapper or one yaml per
+  # binary.
+  - name: groth16
+    container_args:
+      - --export_dir=/data/sp1-groth16
+      - --deterministic
+      - --warmup=2
+      - --iterations=10
+      - --output=/output/groth16.json
+    output_path: /output/groth16.json
+    produces: [groth16_sp1_verifier]

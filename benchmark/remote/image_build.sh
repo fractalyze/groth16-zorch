@@ -33,8 +33,8 @@ cd "$REPO_ROOT"
 REGISTRY="${REGISTRY:-ghcr.io}"
 IMAGE="${IMAGE:-fractalyze/rabbitsnark-py}"
 SHA=$(git rev-parse --short HEAD)
-TAG_SHA="groth16-${TARGET}-${SHA}"
-TAG_LATEST="groth16-${TARGET}-latest"
+TAG_SHA="rabbit-${TARGET}-${SHA}"
+TAG_LATEST="rabbit-${TARGET}-latest"
 
 FULL_SHA="${REGISTRY}/${IMAGE}:${TAG_SHA}"
 FULL_LATEST="${REGISTRY}/${IMAGE}:${TAG_LATEST}"

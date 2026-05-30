@@ -102,4 +102,4 @@ RUN mkdir -p /data/sp1-groth16 /output
 ENTRYPOINT ["python", "-m", "benchmark.sp1_groth16"]
 CMD ["--export_dir=/data/sp1-groth16", \
      "--deterministic", "--warmup=2", "--iterations=10", \
-     "--output=/output/c3_gfx942_result.json"]
+     "--output=/output/groth16.json"]
