@@ -203,6 +203,49 @@ Adding a primitive to an existing image is an additive change (append a
 `hardware.arch` is breaking — file a new yaml for the new arch rather
 than mutating an in-use config.
 
+## Local sweep orchestrator
+
+`benchmark/remote/run_local.sh` drives the local sweep on the dev box.
+It discovers `benchmark/remote/bench_config.*.yaml`, runs every target
+via `docker`, merges per-target JSONs, and writes one consolidated
+`BenchmarkReport` to `benchmark/results/local-<sha>-<ts>.json`.
+
+```bash
+# All configs
+benchmark/remote/run_local.sh
+
+# Specific configs (when iterating on one image)
+benchmark/remote/run_local.sh benchmark/remote/bench_config.nvidia-sm120.yaml
+```
+
+Internal split:
+
+- `run_local.sh` — bash driver: discovers configs, calls `_run_one.py`
+  per config, merges per-target JSONs at the end, prints the consolidated
+  path. Continues past individual config failures (partial sweep is
+  better than no sweep when one image is unavailable, e.g. sp1#25 not
+  yet published).
+- `_run_one.py` — per-config runner: pulls the image, iterates
+  `targets[]`, dispatches each as one `docker run` with vendor-specific
+  GPU flags (`--gpus all` for nvidia, `--device /dev/kfd /dev/dri
+  --group-add video` for amd). Container's `/output` directory is bound
+  to a shared tmp dir so per-target JSONs land where the merger picks
+  them up.
+- `merge_results.py` — concatenates per-target JSONs into one
+  `BenchmarkReport`. Benchmarks dict is keyed by `${impl}.${primitive}`
+  so cross-impl runs of the same primitive land as distinct entries
+  (e.g. `rabbit.msm_g1` and `gnark.msm_g1`). The orchestrator's `metadata`
+  is the FIRST config's metadata; per-entry `metadata.implementation`
+  preserves each benchmark's source impl + source JSON filename for
+  traceability.
+
+The rental flow (`benchmark-on-rented-gpu` skill,
+`fractalyze/claude-plugins#42`) is the same shape but runs on a rented
+host instead of the dev box: it pulls one image, runs all that image's
+targets, downloads per-target JSONs, merges, and commits the result
+JSON to `benchmark/results/<arch>-<sha>-<ts>.json`. The skill reuses
+`merge_results.py` for the merge step.
+
 ## Canonical `output_hash` rules
 
 `output_hash` is computed in impl-independent canonical form so equality
