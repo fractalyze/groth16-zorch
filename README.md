@@ -9,7 +9,7 @@ and [ZKX](https://github.com/fractalyze/zkx).
 | -------------------------------------------------------- | -------- | -------------- |
 | [rapidsnark](https://github.com/iden3/rapidsnark)        | C++      | Native         |
 | [RabbitSNARK](https://github.com/fractalyze/rabbitsnark) | C++      | HLO (ZKIR/ZKX) |
-| **groth16-zorch**                                       | Python   | Zorch          |
+| **groth16-zorch**                                        | Python   | Zorch          |
 
 ## Features
 
@@ -87,8 +87,7 @@ wtns = parse_wtns("path/to/circuit.wtns")
 witness_mont = wtns.data._witnesses.view(np.dtype(bn254_sf_mont))
 _terms, coefficients = zkey_to_terms(zkey)
 az_mont, bz_mont = compute_abc(
-    witness_mont, compiled.terms, coefficients,
-    compiled.domain_size, compiled.domain_size,
+    witness_mont, compiled.terms, coefficients, compiled.domain_size
 )
 z_std = wtns.data._witnesses
 public_signals = write_public_signals(wtns.witnesses, compiled.config.num_public)
@@ -126,22 +125,6 @@ snarkjs, so you can verify with:
 snarkjs groth16 verify verification_key.json public.json proof.json
 ```
 
-## Architecture
-
-```
-groth16_zorch/
-  r1cs.py          — TermMatrices + compute_abc (Az/Bz via jax.ops.segment_sum)
-  circom/          — Circom format parsers
-    zkey/          — .zkey parser (proving key)
-    wtns/          — .wtns parser (witness)
-    zkey_to_terms.py — zkey coefficients → TermMatrices
-  gnark/           — Gnark binary export loaders
-    loader.py      — load_gnark_export (points, witness, Az/Bz)
-  groth16/         — Groth16 prover + verifier
-    prover.py      — compile_circom, compile_gnark, CompiledProver.prove
-    verifier.py    — verify
-```
-
 ## Compatibility
 
 ### Circom / snarkjs
@@ -150,11 +133,11 @@ groth16-zorch is **input/output compatible** with the circom/snarkjs
 ecosystem:
 
 |                                      | snarkjs        | rapidsnark     | **groth16-zorch** |
-| ------------------------------------ | -------------- | -------------- | ------------------ |
-| Input `.zkey`                        | yes            | yes            | yes                |
-| Input `.wtns`                        | yes            | yes            | yes                |
-| Output `proof.json`                  | snarkjs format | snarkjs format | snarkjs format     |
-| Verify with `snarkjs groth16 verify` | yes            | yes            | yes                |
+| ------------------------------------ | -------------- | -------------- | ----------------- |
+| Input `.zkey`                        | yes            | yes            | yes               |
+| Input `.wtns`                        | yes            | yes            | yes               |
+| Output `proof.json`                  | snarkjs format | snarkjs format | snarkjs format    |
+| Verify with `snarkjs groth16 verify` | yes            | yes            | yes               |
 
 ### Gnark
 
@@ -163,7 +146,7 @@ groth16-zorch loads binary exports produced by a gnark Go program (see
 `witness_full.bin` and `solution_a/b.bin` — the witness and Az/Bz that gnark's
 `r1csTyped.Solve` computes natively:
 
-|                                           | gnark (Go)         | **groth16-zorch**           |
+|                                           | gnark (Go)         | **groth16-zorch**            |
 | ----------------------------------------- | ------------------ | ---------------------------- |
 | Binary export (`metadata.json` + `*.bin`) | produces           | consumes                     |
 | Proving key points                        | setup              | loaded from export           |
