@@ -1,4 +1,4 @@
-# Copyright 2026 The RabbitSNARK Authors.
+# Copyright 2026 The Groth16Zorch Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -131,7 +131,7 @@ jobs:
   # TODO(chokobole): Re-enable groth16-cpu
   # groth16-cpu:
   #   needs: groth16-gpu
-  #   runs-on: [self-hosted, rabbitsnark-py]
+  #   runs-on: [self-hosted, groth16-zorch]
   #   steps:
   #     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
   #       with:

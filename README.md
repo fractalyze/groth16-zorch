@@ -9,7 +9,7 @@ and [ZKX](https://github.com/fractalyze/zkx).
 | -------------------------------------------------------- | -------- | -------------- |
 | [rapidsnark](https://github.com/iden3/rapidsnark)        | C++      | Native         |
 | [RabbitSNARK](https://github.com/fractalyze/rabbitsnark) | C++      | HLO (ZKIR/ZKX) |
-| **groth16-zorch**                                       | Python   | Zorch          |
+| **groth16-zorch**                                        | Python   | Zorch          |
 
 ## Features
 
@@ -87,8 +87,7 @@ wtns = parse_wtns("path/to/circuit.wtns")
 witness_mont = wtns.data._witnesses.view(np.dtype(bn254_sf_mont))
 _terms, coefficients = zkey_to_terms(zkey)
 az_mont, bz_mont = compute_abc(
-    witness_mont, compiled.terms, coefficients,
-    compiled.domain_size, compiled.domain_size,
+    witness_mont, compiled.terms, coefficients, compiled.domain_size
 )
 z_std = wtns.data._witnesses
 public_signals = write_public_signals(wtns.witnesses, compiled.config.num_public)
@@ -126,22 +125,6 @@ snarkjs, so you can verify with:
 snarkjs groth16 verify verification_key.json public.json proof.json
 ```
 
-## Architecture
-
-```
-groth16_zorch/
-  r1cs.py          — TermMatrices + compute_abc (Az/Bz via jax.ops.segment_sum)
-  circom/          — Circom format parsers
-    zkey/          — .zkey parser (proving key)
-    wtns/          — .wtns parser (witness)
-    zkey_to_terms.py — zkey coefficients → TermMatrices
-  gnark/           — Gnark binary export loaders
-    loader.py      — load_gnark_export (points, witness, Az/Bz)
-  groth16/         — Groth16 prover + verifier
-    prover.py      — compile_circom, compile_gnark, CompiledProver.prove
-    verifier.py    — verify
-```
-
 ## Compatibility
 
 ### Circom / snarkjs
@@ -150,11 +133,11 @@ groth16-zorch is **input/output compatible** with the circom/snarkjs
 ecosystem:
 
 |                                      | snarkjs        | rapidsnark     | **groth16-zorch** |
-| ------------------------------------ | -------------- | -------------- | ------------------ |
-| Input `.zkey`                        | yes            | yes            | yes                |
-| Input `.wtns`                        | yes            | yes            | yes                |
-| Output `proof.json`                  | snarkjs format | snarkjs format | snarkjs format     |
-| Verify with `snarkjs groth16 verify` | yes            | yes            | yes                |
+| ------------------------------------ | -------------- | -------------- | ----------------- |
+| Input `.zkey`                        | yes            | yes            | yes               |
+| Input `.wtns`                        | yes            | yes            | yes               |
+| Output `proof.json`                  | snarkjs format | snarkjs format | snarkjs format    |
+| Verify with `snarkjs groth16 verify` | yes            | yes            | yes               |
 
 ### Gnark
 
@@ -163,13 +146,43 @@ groth16-zorch loads binary exports produced by a gnark Go program (see
 `witness_full.bin` and `solution_a/b.bin` — the witness and Az/Bz that gnark's
 `r1csTyped.Solve` computes natively:
 
-|                                           | gnark (Go)         | **groth16-zorch**           |
+|                                           | gnark (Go)         | **groth16-zorch**            |
 | ----------------------------------------- | ------------------ | ---------------------------- |
 | Binary export (`metadata.json` + `*.bin`) | produces           | consumes                     |
 | Proving key points                        | setup              | loaded from export           |
 | Witness + Az/Bz                           | Go solver          | loaded from export           |
 | Proof generation                          | `groth16.Prove()`  | `compiled.prove()`           |
 | Verification                              | `groth16.Verify()` | `verify(vk, proof, signals)` |
+
+## Benchmark
+
+Prove time for SP1's final Groth16 verifier circuit — BN254, **15,965,950
+constraints**, domain 2²⁴ — on an **RTX 5090**. The reference is gnark's
+[ICICLE](https://github.com/ingonyama-zk/icicle) GPU Groth16 prover on the same
+circuit and GPU. groth16-zorch's proof `verify`s and is deterministic (fixed
+output across runs).
+
+Both provers consume the same gnark export, which already carries the solved
+witness and Az/Bz (gnark's Go solver produces them at export time). So this is a
+**prove-only** comparison — it excludes witness solving on both sides:
+
+| prover                       | prove (median) | speedup |
+| ---------------------------- | -------------- | ------- |
+| **groth16-zorch** (JAX, GPU) | **1573 ms**    | 1.50×   |
+| gnark ICICLE (GPU)           | 2355 ms        | 1.00×   |
+
+gnark's end-to-end run additionally re-solves the witness on every proof
+(~2.2 s), for ~4.5 s total; groth16-zorch loads that pre-solved witness/Az/Bz
+straight from the export. One-time setup for groth16-zorch (not counted in the
+prove time): ~4.4 s to load the 19 GB export and ~5.0 s to compile the 2²⁴
+executable.
+
+Reproduce with `//benchmark:sp1_groth16` (see `.github/workflows/benchmark.yml`):
+
+```shell
+JAX_PLATFORMS=cuda,cpu bazel run //benchmark:sp1_groth16 -- \
+    --export_dir=<sp1-groth16-export> --deterministic --circuit=sp1
+```
 
 ## How to test
 
