@@ -154,6 +154,36 @@ groth16-zorch loads binary exports produced by a gnark Go program (see
 | Proof generation                          | `groth16.Prove()`  | `compiled.prove()`           |
 | Verification                              | `groth16.Verify()` | `verify(vk, proof, signals)` |
 
+## Benchmark
+
+Prove time for SP1's final Groth16 verifier circuit — BN254, **15,965,950
+constraints**, domain 2²⁴ — on an **RTX 5090**. The reference is gnark's
+[ICICLE](https://github.com/ingonyama-zk/icicle) GPU Groth16 prover on the same
+circuit and GPU. groth16-zorch's proof `verify`s and is deterministic (fixed
+output across runs).
+
+Both provers consume the same gnark export, which already carries the solved
+witness and Az/Bz (gnark's Go solver produces them at export time). So this is a
+**prove-only** comparison — it excludes witness solving on both sides:
+
+| prover                       | prove (median) | speedup |
+| ---------------------------- | -------------- | ------- |
+| **groth16-zorch** (JAX, GPU) | **1573 ms**    | 1.50×   |
+| gnark ICICLE (GPU)           | 2355 ms        | 1.00×   |
+
+gnark's end-to-end run additionally re-solves the witness on every proof
+(~2.2 s), for ~4.5 s total; groth16-zorch loads that pre-solved witness/Az/Bz
+straight from the export. One-time setup for groth16-zorch (not counted in the
+prove time): ~4.4 s to load the 19 GB export and ~5.0 s to compile the 2²⁴
+executable.
+
+Reproduce with `//benchmark:sp1_groth16` (see `.github/workflows/benchmark.yml`):
+
+```shell
+JAX_PLATFORMS=cuda,cpu bazel run //benchmark:sp1_groth16 -- \
+    --export_dir=<sp1-groth16-export> --deterministic --circuit=sp1
+```
+
 ## How to test
 
 ```shell
