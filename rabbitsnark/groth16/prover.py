@@ -73,6 +73,7 @@ if TYPE_CHECKING:
     from rabbitsnark.circom.zkey.verifying_key import G1Point, G2Point
     from rabbitsnark.circom.zkey.zkey import ZKeyV1
     from rabbitsnark.gnark.types import GnarkProvingData
+    from rabbitsnark.r1cs import TermMatrices
 
 # Subgroup generators for NTT root of unity computation. Both circom
 # (snarkjs ffjavascript) and gnark pin the BN254 Fr multiplicative

@@ -58,18 +58,12 @@ py_test(
     ],
 )
 
-_SOLVER_SO = "@r1cs_solver//solver:libr1cs_solver.so"
-
-_E2E_DATA = [
-    ":testdata",
-    _SOLVER_SO,
-]
-
 _E2E_DEPS = [
     "//rabbitsnark:circom_wtns",
     "//rabbitsnark:circom_zkey",
+    "//rabbitsnark:circom_zkey_to_terms",
     "//rabbitsnark:groth16",
-    "//rabbitsnark:r1cs_solver",
+    "//rabbitsnark:r1cs",
     "@pypi//absl_py",
     "@pypi//numpy",
     "@pypi//zk_dtypes",
@@ -78,39 +72,16 @@ _E2E_DEPS = [
 py_test(
     name = "e2e_test",
     srcs = ["e2e_test.py"],
-    data = _E2E_DATA,
+    data = [":testdata"],
     deps = _E2E_DEPS,
 )
 
 py_test(
     name = "e2e_gpu_test",
     srcs = ["e2e_test.py"],
-    data = _E2E_DATA,
+    data = [":testdata"],
     env = {"JAX_PLATFORMS": "cpu,cuda"},
     main = "e2e_test.py",
     tags = ["gpu"],
     deps = _E2E_DEPS + ["@pypi//zkx_cuda_pjrt"],
-)
-
-_CIRCUIT_DATA = [
-    ":testdata",
-    _SOLVER_SO,
-    "//third_party/circom_circuits:libmultiplier_3.so",
-]
-
-_CIRCUIT_DEPS = [
-    "//rabbitsnark:circom_witness_calculator",
-    "//rabbitsnark:circom_zkey",
-    "//rabbitsnark:groth16",
-    "//rabbitsnark:r1cs_solver",
-    "@pypi//absl_py",
-    "@pypi//numpy",
-    "@pypi//zk_dtypes",
-]
-
-py_test(
-    name = "e2e_circuit_test",
-    srcs = ["e2e_circuit_test.py"],
-    data = _CIRCUIT_DATA,
-    deps = _CIRCUIT_DEPS,
 )

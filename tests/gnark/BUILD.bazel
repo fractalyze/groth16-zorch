@@ -45,16 +45,11 @@ py_test(
     ],
 )
 
-_E2E_DATA = [
-    ":testdata",
-    "@r1cs_solver//solver:libr1cs_solver.so",
-]
-
 _E2E_DEPS = [
     "//rabbitsnark:gnark",
     "//rabbitsnark:groth16",
-    "//rabbitsnark:r1cs_solver",
     "@pypi//absl_py",
+    "@pypi//jax",
     "@pypi//numpy",
     "@pypi//zk_dtypes",
 ]
@@ -62,14 +57,14 @@ _E2E_DEPS = [
 py_test(
     name = "e2e_test",
     srcs = ["e2e_test.py"],
-    data = _E2E_DATA,
+    data = [":testdata"],
     deps = _E2E_DEPS,
 )
 
 py_test(
     name = "e2e_gpu_test",
     srcs = ["e2e_test.py"],
-    data = _E2E_DATA,
+    data = [":testdata"],
     env = {"JAX_PLATFORMS": "cpu,cuda"},
     main = "e2e_test.py",
     tags = ["gpu"],

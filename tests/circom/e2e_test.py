@@ -33,7 +33,7 @@ from rabbitsnark.circom.wtns import parse_wtns
 from rabbitsnark.circom.zkey import parse_zkey
 from rabbitsnark.groth16 import compile_circom, write_public_signals
 from rabbitsnark.groth16.verifier import VerificationKey, verify
-from rabbitsnark.r1cs_solver import compute_abc
+from rabbitsnark.r1cs import compute_abc
 
 
 class TestCircomE2EProveVerify(absltest.TestCase):
@@ -53,7 +53,6 @@ class TestCircomE2EProveVerify(absltest.TestCase):
             witness_mont,
             self.compiled.terms,
             coefficients,
-            self.compiled.domain_size,
             self.compiled.domain_size,
         )
         self.z_std = self.wtns.data._witnesses
