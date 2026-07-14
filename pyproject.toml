@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rabbitsnark"
+name = "groth16-zorch"
 version = "0.1.0"
 description = "Groth16 prover in Python using Zorch (circom/snarkjs compatible)"
 readme = "README.md"
@@ -26,7 +26,7 @@ classifiers = [
 ]
 
 [project.scripts]
-rabbitsnark = "rabbitsnark.cli:main"
+groth16-zorch = "groth16_zorch.cli:main"
 
 [project.optional-dependencies]
 dev = [

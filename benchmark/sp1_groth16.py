@@ -40,9 +40,9 @@ import numpy as np
 from zk_dtypes import bn254_sf_mont
 from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
 
-from rabbitsnark.gnark import load_gnark_export
-from rabbitsnark.groth16.prover import compile_gnark
-from rabbitsnark.groth16.verifier import VerificationKey, verify
+from groth16_zorch.gnark import load_gnark_export
+from groth16_zorch.groth16.prover import compile_gnark
+from groth16_zorch.groth16.verifier import VerificationKey, verify
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -58,7 +58,7 @@ class Groth16Benchmark(JaxBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
-            implementation="rabbitsnark",
+            implementation="groth16-zorch",
             version="0.1.0",
             default_iterations=3,
             default_warmup=1,

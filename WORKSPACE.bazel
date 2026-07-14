@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-workspace(name = "rabbitsnark")
+workspace(name = "groth16_zorch")
 
 # --- zk_dtypes (BN254 dtypes + hermetic Python / pip bootstrap macros) ---
 

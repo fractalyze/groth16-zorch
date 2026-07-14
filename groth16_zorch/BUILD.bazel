@@ -124,7 +124,7 @@ py_library(
 )
 
 py_library(
-    name = "rabbitsnark",
+    name = "groth16_zorch",
     srcs = ["__init__.py"],
     deps = [
         ":circom_wtns",

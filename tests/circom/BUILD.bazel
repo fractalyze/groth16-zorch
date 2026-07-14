@@ -25,7 +25,7 @@ py_test(
     srcs = ["wtns_test.py"],
     data = [":testdata"],
     deps = [
-        "//rabbitsnark:circom_wtns",
+        "//groth16_zorch:circom_wtns",
         "@pypi//absl_py",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
@@ -37,7 +37,7 @@ py_test(
     srcs = ["zkey_test.py"],
     data = [":testdata"],
     deps = [
-        "//rabbitsnark:circom_zkey",
+        "//groth16_zorch:circom_zkey",
         "@pypi//absl_py",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
@@ -49,8 +49,8 @@ py_test(
     srcs = ["groth16_verify_test.py"],
     data = [":testdata"],
     deps = [
-        "//rabbitsnark:circom_zkey",
-        "//rabbitsnark:groth16",
+        "//groth16_zorch:circom_zkey",
+        "//groth16_zorch:groth16",
         "@pypi//absl_py",
         "@pypi//jax",
         "@pypi//numpy",
@@ -59,11 +59,11 @@ py_test(
 )
 
 _E2E_DEPS = [
-    "//rabbitsnark:circom_wtns",
-    "//rabbitsnark:circom_zkey",
-    "//rabbitsnark:circom_zkey_to_terms",
-    "//rabbitsnark:groth16",
-    "//rabbitsnark:r1cs",
+    "//groth16_zorch:circom_wtns",
+    "//groth16_zorch:circom_zkey",
+    "//groth16_zorch:circom_zkey_to_terms",
+    "//groth16_zorch:groth16",
+    "//groth16_zorch:r1cs",
     "@pypi//absl_py",
     "@pypi//numpy",
     "@pypi//zk_dtypes",

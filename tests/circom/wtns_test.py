@@ -20,8 +20,8 @@ from pathlib import Path
 
 from absl.testing import absltest
 
-from rabbitsnark.circom.base import Modulus
-from rabbitsnark.circom.wtns import WtnsV2, parse_wtns
+from groth16_zorch.circom.base import Modulus
+from groth16_zorch.circom.wtns import WtnsV2, parse_wtns
 
 # BN254 scalar field modulus (Fr)
 BN254_FR_MODULUS = (

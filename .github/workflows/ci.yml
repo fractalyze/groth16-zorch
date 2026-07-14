@@ -35,7 +35,7 @@ jobs:
     if: github.actor != 'fractalyze-dev'
     runs-on: [self-hosted, cpu]
     steps:
-      - name: Checkout rabbitsnark-py
+      - name: Checkout groth16-zorch
         uses: actions/checkout@v4
         with:
           fetch-depth: 2

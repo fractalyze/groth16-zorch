@@ -26,8 +26,8 @@ from pathlib import Path
 
 from absl.testing import absltest
 
-from rabbitsnark.circom.zkey import parse_zkey
-from rabbitsnark.groth16 import VerificationKey, verify
+from groth16_zorch.circom.zkey import parse_zkey
+from groth16_zorch.groth16 import VerificationKey, verify
 
 
 def _build_vk_json(zkey):

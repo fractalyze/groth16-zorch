@@ -16,7 +16,7 @@
 """Read-only buffer for binary file parsing using memory-mapped files.
 
 This module provides efficient file reading using mmap, similar to the C++
-rabbitsnark implementation which uses tsl::ReadOnlyMemoryRegion with
+RabbitSNARK implementation which uses tsl::ReadOnlyMemoryRegion with
 madvise(MADV_SEQUENTIAL) for optimized sequential reads.
 """
 

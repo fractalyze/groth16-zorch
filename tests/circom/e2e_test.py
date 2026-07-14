@@ -29,11 +29,11 @@ import numpy as np
 from absl.testing import absltest
 from zk_dtypes import bn254_sf_mont
 
-from rabbitsnark.circom.wtns import parse_wtns
-from rabbitsnark.circom.zkey import parse_zkey
-from rabbitsnark.groth16 import compile_circom, write_public_signals
-from rabbitsnark.groth16.verifier import VerificationKey, verify
-from rabbitsnark.r1cs import compute_abc
+from groth16_zorch.circom.wtns import parse_wtns
+from groth16_zorch.circom.zkey import parse_zkey
+from groth16_zorch.groth16 import compile_circom, write_public_signals
+from groth16_zorch.groth16.verifier import VerificationKey, verify
+from groth16_zorch.r1cs import compute_abc
 
 
 class TestCircomE2EProveVerify(absltest.TestCase):
@@ -46,7 +46,7 @@ class TestCircomE2EProveVerify(absltest.TestCase):
         self.compiled = compile_circom(self.zkey)
         # Bitcast witness std → mont, values are aR² (double Montgomery).
         witness_mont = self.wtns.data._witnesses.view(np.dtype(bn254_sf_mont))
-        from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
+        from groth16_zorch.circom.zkey_to_terms import zkey_to_terms
 
         _, coefficients = zkey_to_terms(self.zkey)
         self.az_mont, self.bz_mont = compute_abc(
