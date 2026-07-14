@@ -1,0 +1,45 @@
+# Copyright 2026 The RabbitSNARK Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""groth16-zorch — a Groth16 prover in Python on the Zorch/JAX backend.
+
+bzlmod module. bazel 9 dropped WORKSPACE, so the hermetic Python toolchain and
+pip dependencies are declared here. Every dependency is a Python wheel from the
+Fractalyze package index (jax / jaxlib / jax-cuda12-* / zk_dtypes / ...); there
+is no native or Bazel-module dependency.
+"""
+
+module(
+    name = "groth16_zorch",
+    version = "0.0.0",
+)
+
+bazel_dep(name = "rules_python", version = "1.7.0")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.11",
+)
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    # jax / jaxlib / jax-cuda12-* etc. are published on the Fractalyze index.
+    extra_pip_args = ["--extra-index-url=https://fractalyze.github.io/pypi/simple/"],
+    hub_name = "pypi",
+    python_version = "3.11",
+    requirements_lock = "//:requirements_lock_3_11.txt",
+)
+use_repo(pip, "pypi")

@@ -18,8 +18,6 @@ build -c opt
 # Make Bazel print out all options from rc files.
 build --announce_rc
 
-common --noenable_bzlmod
-
 build --cxxopt=-std=c++17
 build --host_cxxopt=-std=c++17
 
