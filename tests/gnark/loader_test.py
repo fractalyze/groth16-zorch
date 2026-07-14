@@ -26,7 +26,7 @@ import numpy as np
 from absl.testing import absltest
 from zk_dtypes import bn254_sf_mont
 
-from rabbitsnark.gnark import load_gnark_export
+from groth16_zorch.gnark import load_gnark_export
 
 
 class TestGnarkLoader(absltest.TestCase):

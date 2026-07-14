@@ -17,7 +17,7 @@
 
 The zkey file stores R1CS coefficients as a list of (matrix, constraint,
 signal, value) tuples.  This module converts them to the term-based
-``TermMatrices`` consumed by ``rabbitsnark.r1cs.compute_abc``.
+``TermMatrices`` consumed by ``groth16_zorch.r1cs.compute_abc``.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from rabbitsnark.circom.zkey.zkey import ZKeyV1
-    from rabbitsnark.r1cs import TermMatrices
+    from groth16_zorch.circom.zkey.zkey import ZKeyV1
+    from groth16_zorch.r1cs import TermMatrices
 
 FIELD_ELEM_SIZE = 32  # 256-bit BN254 scalar = 32 bytes
 
@@ -46,7 +46,7 @@ def zkey_to_terms(zkey: "ZKeyV1") -> tuple["TermMatrices", np.ndarray]:
         Tuple of (TermMatrices, coefficients) where coefficients is
         (num_coefficients, 32) uint8 array.
     """
-    from rabbitsnark.r1cs import TermMatrices
+    from groth16_zorch.r1cs import TermMatrices
 
     n = zkey.domain_size
     modulus = zkey.header_groth.r.to_int()

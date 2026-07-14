@@ -70,10 +70,10 @@ from .proof import Groth16Proof, write_public_signals  # noqa: F401
 if TYPE_CHECKING:
     from jax import Array
 
-    from rabbitsnark.circom.zkey.verifying_key import G1Point, G2Point
-    from rabbitsnark.circom.zkey.zkey import ZKeyV1
-    from rabbitsnark.gnark.types import GnarkProvingData
-    from rabbitsnark.r1cs import TermMatrices
+    from groth16_zorch.circom.zkey.verifying_key import G1Point, G2Point
+    from groth16_zorch.circom.zkey.zkey import ZKeyV1
+    from groth16_zorch.gnark.types import GnarkProvingData
+    from groth16_zorch.r1cs import TermMatrices
 
 # Subgroup generators for NTT root of unity computation. Both circom
 # (snarkjs ffjavascript) and gnark pin the BN254 Fr multiplicative
@@ -277,7 +277,7 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
     num_public = zkey.header_groth.num_public_inputs
     domain_size = zkey.domain_size
     log_n = int(math.log2(domain_size))
-    from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
+    from groth16_zorch.circom.zkey_to_terms import zkey_to_terms
 
     terms, _coefficients = zkey_to_terms(zkey)
     vk = zkey.verifying_key

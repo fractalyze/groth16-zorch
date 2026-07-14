@@ -65,7 +65,7 @@ jobs:
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-rabbitsnark
+          name: wheel-groth16-zorch
           path: dist/*.whl
 
   upload-to-release:
@@ -78,7 +78,7 @@ jobs:
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
-          name: wheel-rabbitsnark
+          name: wheel-groth16-zorch
           path: dist
 
       - name: Upload wheel to release

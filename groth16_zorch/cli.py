@@ -13,17 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Command-line interface for RabbitSNARK Groth16 prover and verifier.
+"""Command-line interface for the groth16-zorch Groth16 prover and verifier.
 
 Supports both circom (.zkey/.wtns) and gnark (binary export) formats::
 
     # Circom
-    rabbitsnark circom prove <circuit.zkey> <witness.wtns> <proof.json> <public.json>
-    rabbitsnark circom verify <vkey.json> <public.json> <proof.json>
+    groth16-zorch circom prove <circuit.zkey> <witness.wtns> <proof.json> <public.json>
+    groth16-zorch circom verify <vkey.json> <public.json> <proof.json>
 
     # Gnark
-    rabbitsnark gnark prove <export_dir> <proof.json> <public.json>
-    rabbitsnark gnark verify <export_dir> <public.json> <proof.json>
+    groth16-zorch gnark prove <export_dir> <proof.json> <public.json>
+    groth16-zorch gnark verify <export_dir> <public.json> <proof.json>
 """
 
 from __future__ import annotations
@@ -38,10 +38,10 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
     import numpy as np
     from zk_dtypes import bn254_sf_mont
 
-    from rabbitsnark.circom.wtns import parse_wtns
-    from rabbitsnark.circom.zkey import parse_zkey
-    from rabbitsnark.groth16 import compile_circom, write_public_signals
-    from rabbitsnark.r1cs import compute_abc
+    from groth16_zorch.circom.wtns import parse_wtns
+    from groth16_zorch.circom.zkey import parse_zkey
+    from groth16_zorch.groth16 import compile_circom, write_public_signals
+    from groth16_zorch.r1cs import compute_abc
 
     print(f"Loading zkey: {args.zkey}")
     zkey = parse_zkey(args.zkey)
@@ -61,7 +61,7 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
 
     print("Computing Az/Bz...")
     t0 = time.time()
-    from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
+    from groth16_zorch.circom.zkey_to_terms import zkey_to_terms
 
     _terms, coefficients = zkey_to_terms(zkey)
     az_mont, bz_mont = compute_abc(
@@ -89,7 +89,7 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
 
 
 def _cmd_circom_verify(args: argparse.Namespace) -> None:
-    from rabbitsnark.groth16 import VerificationKey, verify
+    from groth16_zorch.groth16 import VerificationKey, verify
 
     print(f"Loading verification key: {args.vkey}")
     vk = VerificationKey.from_file(args.vkey)
@@ -122,8 +122,8 @@ def _cmd_gnark_prove(args: argparse.Namespace) -> None:
     from jax import lax
     from zk_dtypes import bn254_sf, bn254_sf_mont
 
-    from rabbitsnark.gnark import load_gnark_export
-    from rabbitsnark.groth16 import compile_gnark
+    from groth16_zorch.gnark import load_gnark_export
+    from groth16_zorch.groth16 import compile_gnark
 
     export_dir = Path(args.export_dir)
 
@@ -172,8 +172,8 @@ def _cmd_gnark_prove(args: argparse.Namespace) -> None:
 def _cmd_gnark_verify(args: argparse.Namespace) -> None:
     from pathlib import Path
 
-    from rabbitsnark.gnark import load_gnark_export
-    from rabbitsnark.groth16.verifier import VerificationKey, verify
+    from groth16_zorch.gnark import load_gnark_export
+    from groth16_zorch.groth16.verifier import VerificationKey, verify
 
     export_dir = Path(args.export_dir)
     data = load_gnark_export(export_dir)
@@ -239,7 +239,7 @@ def _add_gnark_subcommands(subparsers: argparse._SubParsersAction) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="rabbitsnark",
+        prog="groth16-zorch",
         description="Groth16 prover and verifier for circom and gnark formats",
     )
     subparsers = parser.add_subparsers(dest="command")

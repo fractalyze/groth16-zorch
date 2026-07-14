@@ -35,13 +35,13 @@ import numpy as np
 from jax import lax
 from zk_dtypes import bn254_g1_affine, bn254_g2_affine, bn254_sf
 
-from rabbitsnark.circom.zkey.verifying_key import G1Point, G2Point
+from groth16_zorch.circom.zkey.verifying_key import G1Point, G2Point
 
 from .proof import Groth16Proof
 
 if TYPE_CHECKING:
-    from rabbitsnark.circom.zkey.zkey import ZKeyV1
-    from rabbitsnark.gnark.types import GnarkProvingData
+    from groth16_zorch.circom.zkey.zkey import ZKeyV1
+    from groth16_zorch.gnark.types import GnarkProvingData
 
 BN254_FQ_MODULUS = (
     21888242871839275222246405745257275088696311157297823662689037894645226208583

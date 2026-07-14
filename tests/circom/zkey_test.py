@@ -20,9 +20,9 @@ from pathlib import Path
 
 from absl.testing import absltest
 
-from rabbitsnark.circom.base import Modulus
-from rabbitsnark.circom.zkey import Coefficient, ZKeyV1, parse_zkey
-from rabbitsnark.circom.zkey.verifying_key import G1Point, G2Point
+from groth16_zorch.circom.base import Modulus
+from groth16_zorch.circom.zkey import Coefficient, ZKeyV1, parse_zkey
+from groth16_zorch.circom.zkey.verifying_key import G1Point, G2Point
 
 # BN254 base field modulus (Fq)
 BN254_FQ_MODULUS = (

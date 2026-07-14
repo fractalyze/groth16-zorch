@@ -1,4 +1,4 @@
-# RabbitSNARK-py
+# groth16-zorch
 
 A Groth16 prover implementation in Python using [Zorch](https://github.com/fractalyze/jax).
 This is the Python counterpart of [RabbitSNARK](https://github.com/fractalyze/rabbitsnark),
@@ -9,7 +9,7 @@ and [ZKX](https://github.com/fractalyze/zkx).
 | -------------------------------------------------------- | -------- | -------------- |
 | [rapidsnark](https://github.com/iden3/rapidsnark)        | C++      | Native         |
 | [RabbitSNARK](https://github.com/fractalyze/rabbitsnark) | C++      | HLO (ZKIR/ZKX) |
-| **RabbitSNARK-py**                                       | Python   | Zorch          |
+| **groth16-zorch**                                       | Python   | Zorch          |
 
 ## Features
 
@@ -25,13 +25,13 @@ and [ZKX](https://github.com/fractalyze/zkx).
 1. Clone the repository
 
    ```shell
-   git clone https://github.com/fractalyze/rabbitsnark-py.git
+   git clone https://github.com/fractalyze/groth16-zorch.git
    ```
 
 1. Navigate to the project directory
 
    ```shell
-   cd rabbitsnark-py
+   cd groth16-zorch
    ```
 
 1. Install the package
@@ -54,16 +54,16 @@ and [ZKX](https://github.com/fractalyze/zkx).
 
 ```shell
 # Witness is a pre-computed .wtns (e.g. `snarkjs wtns calculate`)
-rabbitsnark circom prove <circuit.zkey> <witness.wtns> <proof.json> <public.json>
+groth16-zorch circom prove <circuit.zkey> <witness.wtns> <proof.json> <public.json>
 
-rabbitsnark circom verify <vkey.json> <public.json> <proof.json>
+groth16-zorch circom verify <vkey.json> <public.json> <proof.json>
 ```
 
 #### Gnark
 
 ```shell
-rabbitsnark gnark prove <export_dir> <proof.json> <public.json> [--no-zk] [--deterministic]
-rabbitsnark gnark verify <export_dir> <public.json> <proof.json>
+groth16-zorch gnark prove <export_dir> <proof.json> <public.json> [--no-zk] [--deterministic]
+groth16-zorch gnark verify <export_dir> <public.json> <proof.json>
 ```
 
 ### Python API
@@ -74,11 +74,11 @@ rabbitsnark gnark verify <export_dir> <public.json> <proof.json>
 import numpy as np
 from zk_dtypes import bn254_sf_mont
 
-from rabbitsnark.circom.wtns import parse_wtns
-from rabbitsnark.circom.zkey import parse_zkey
-from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
-from rabbitsnark.groth16 import compile_circom, write_public_signals
-from rabbitsnark.r1cs import compute_abc
+from groth16_zorch.circom.wtns import parse_wtns
+from groth16_zorch.circom.zkey import parse_zkey
+from groth16_zorch.circom.zkey_to_terms import zkey_to_terms
+from groth16_zorch.groth16 import compile_circom, write_public_signals
+from groth16_zorch.r1cs import compute_abc
 
 zkey = parse_zkey("path/to/circuit.zkey")
 compiled = compile_circom(zkey)  # one-time: parse zkey, build term matrices + arrays
@@ -102,8 +102,8 @@ import numpy as np
 from jax import lax
 from zk_dtypes import bn254_sf, bn254_sf_mont
 
-from rabbitsnark.gnark import load_gnark_export
-from rabbitsnark.groth16 import compile_gnark
+from groth16_zorch.gnark import load_gnark_export
+from groth16_zorch.groth16 import compile_gnark
 
 # The export carries the solved witness and Az/Bz (solution_a/b), both
 # produced by gnark's Go solver — nothing is recomputed here.
@@ -129,7 +129,7 @@ snarkjs groth16 verify verification_key.json public.json proof.json
 ## Architecture
 
 ```
-rabbitsnark/
+groth16_zorch/
   r1cs.py          — TermMatrices + compute_abc (Az/Bz via jax.ops.segment_sum)
   circom/          — Circom format parsers
     zkey/          — .zkey parser (proving key)
@@ -146,10 +146,10 @@ rabbitsnark/
 
 ### Circom / snarkjs
 
-RabbitSNARK-py is **input/output compatible** with the circom/snarkjs
+groth16-zorch is **input/output compatible** with the circom/snarkjs
 ecosystem:
 
-|                                      | snarkjs        | rapidsnark     | **RabbitSNARK-py** |
+|                                      | snarkjs        | rapidsnark     | **groth16-zorch** |
 | ------------------------------------ | -------------- | -------------- | ------------------ |
 | Input `.zkey`                        | yes            | yes            | yes                |
 | Input `.wtns`                        | yes            | yes            | yes                |
@@ -158,12 +158,12 @@ ecosystem:
 
 ### Gnark
 
-RabbitSNARK-py loads binary exports produced by a gnark Go program (see
+groth16-zorch loads binary exports produced by a gnark Go program (see
 `tests/gnark/gen_fixture` for a minimal example). The export must include
 `witness_full.bin` and `solution_a/b.bin` — the witness and Az/Bz that gnark's
 `r1csTyped.Solve` computes natively:
 
-|                                           | gnark (Go)         | **RabbitSNARK-py**           |
+|                                           | gnark (Go)         | **groth16-zorch**           |
 | ----------------------------------------- | ------------------ | ---------------------------- |
 | Binary export (`metadata.json` + `*.bin`) | produces           | consumes                     |
 | Proving key points                        | setup              | loaded from export           |

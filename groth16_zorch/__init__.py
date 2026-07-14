@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""RabbitSNARK Python library for circom file parsing and ZK primitives."""
+"""groth16-zorch: a Groth16 prover for circom and gnark on the Zorch/JAX backend."""
 
 __version__ = "0.1.0"
 
-from rabbitsnark import gnark, groth16
+from groth16_zorch import gnark, groth16
 
 __all__ = [
     "__version__",

@@ -19,8 +19,8 @@ py_library(
     name = "sp1_groth16_lib",
     srcs = ["sp1_groth16.py"],
     deps = [
-        "//rabbitsnark:gnark",
-        "//rabbitsnark:groth16",
+        "//groth16_zorch:gnark",
+        "//groth16_zorch:groth16",
         "@pypi//jax",
         "@pypi//numpy",
         "@pypi//zk_dtypes",

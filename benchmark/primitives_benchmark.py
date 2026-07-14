@@ -99,7 +99,7 @@ class PrimitivesBenchmark(JaxBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
-            implementation="rabbitsnark",
+            implementation="groth16-zorch",
             version="0.1.0",
             default_iterations=3,
             default_warmup=1,

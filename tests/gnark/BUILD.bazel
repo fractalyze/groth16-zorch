@@ -25,7 +25,7 @@ py_test(
     srcs = ["loader_test.py"],
     data = [":testdata"],
     deps = [
-        "//rabbitsnark:gnark",
+        "//groth16_zorch:gnark",
         "@pypi//absl_py",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
@@ -37,8 +37,8 @@ py_test(
     srcs = ["groth16_verify_test.py"],
     data = [":testdata"],
     deps = [
-        "//rabbitsnark:gnark",
-        "//rabbitsnark:groth16",
+        "//groth16_zorch:gnark",
+        "//groth16_zorch:groth16",
         "@pypi//absl_py",
         "@pypi//jax",
         "@pypi//zk_dtypes",
@@ -46,8 +46,8 @@ py_test(
 )
 
 _E2E_DEPS = [
-    "//rabbitsnark:gnark",
-    "//rabbitsnark:groth16",
+    "//groth16_zorch:gnark",
+    "//groth16_zorch:groth16",
     "@pypi//absl_py",
     "@pypi//jax",
     "@pypi//numpy",

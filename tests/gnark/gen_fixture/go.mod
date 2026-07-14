@@ -1,4 +1,4 @@
-module github.com/fractalyze/rabbitsnark-py/tests/gnark/gen_fixture
+module github.com/fractalyze/groth16-zorch/tests/gnark/gen_fixture
 
 go 1.22
 

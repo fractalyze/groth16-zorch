@@ -28,9 +28,9 @@ from absl.testing import absltest
 from jax import lax
 from zk_dtypes import bn254_sf, bn254_sf_mont
 
-from rabbitsnark.gnark import load_gnark_export
-from rabbitsnark.groth16 import compile_gnark
-from rabbitsnark.groth16.verifier import VerificationKey, verify
+from groth16_zorch.gnark import load_gnark_export
+from groth16_zorch.groth16 import compile_gnark
+from groth16_zorch.groth16.verifier import VerificationKey, verify
 
 
 class TestGnarkE2EProveVerify(absltest.TestCase):
