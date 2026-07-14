@@ -1,2 +1,1 @@
-build:ci --remote_cache=grpc://gpu-server:9092
 test:ci --test_output=errors
