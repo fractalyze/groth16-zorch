@@ -15,8 +15,8 @@
 """FFT, IFFT, and MSM G1 benchmarks for BN254 field.
 
 Measures the performance of core cryptographic primitives on BN254:
-  - Forward NTT (lax.fft with gnark generator = 5)
-  - Inverse NTT (lax.fft IFFT)
+  - Forward NTT (lax.ntt with gnark generator = 5)
+  - Inverse NTT (lax.ntt INTT)
   - Multi-Scalar Multiplication G1 (lax.msm)
 
 Allocates arrays at the maximum requested size once, then slices down
@@ -139,12 +139,22 @@ class PrimitivesBenchmark(JaxBenchmark):
             msm_last: dict = {}
 
             def _fft_fn(s=scalars, sz=n, last=fft_last):
-                r = lax.fft(s, "FFT", sz, generator=GNARK_GENERATOR)
+                r = lax.ntt(
+                    s,
+                    ntt_type=lax.NttType.NTT,
+                    ntt_length=sz,
+                    generator=GNARK_GENERATOR,
+                )
                 last["result"] = r
                 return r
 
             def _ifft_fn(s=scalars, sz=n, last=ifft_last):
-                r = lax.fft(s, "IFFT", sz, generator=GNARK_GENERATOR)
+                r = lax.ntt(
+                    s,
+                    ntt_type=lax.NttType.INTT,
+                    ntt_length=sz,
+                    generator=GNARK_GENERATOR,
+                )
                 last["result"] = r
                 return r
 

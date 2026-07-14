@@ -38,7 +38,8 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":sp1_groth16_lib",
-        "@pypi//zkx_cuda_pjrt",
+        "@pypi//jax_cuda12_pjrt",
+        "@pypi//jax_cuda12_plugin",
     ],
 )
 
@@ -63,7 +64,8 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":primitives_benchmark_lib",
-        "@pypi//zkx_cuda_pjrt",
+        "@pypi//jax_cuda12_pjrt",
+        "@pypi//jax_cuda12_plugin",
     ],
 )
 
