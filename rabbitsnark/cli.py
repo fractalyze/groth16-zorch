@@ -36,11 +36,12 @@ import time
 
 def _cmd_circom_prove(args: argparse.Namespace) -> None:
     import numpy as np
-    from zk_dtypes import bn254_sf, bn254_sf_mont
+    from zk_dtypes import bn254_sf_mont
 
+    from rabbitsnark.circom.wtns import parse_wtns
     from rabbitsnark.circom.zkey import parse_zkey
     from rabbitsnark.groth16 import compile_circom, write_public_signals
-    from rabbitsnark.r1cs_solver import compute_abc
+    from rabbitsnark.r1cs import compute_abc
 
     print(f"Loading zkey: {args.zkey}")
     zkey = parse_zkey(args.zkey)
@@ -51,50 +52,12 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
     elapsed = time.time() - t0
     print(f"Compiled in {elapsed:.2f}s")
 
-    if args.wtns:
-        # Path 1: pre-computed witness file (.wtns)
-        from rabbitsnark.circom.wtns import parse_wtns
-
-        print(f"Loading wtns: {args.wtns}")
-        wtns = parse_wtns(args.wtns)
-        # Witness is standard form — bitcast for compute_abc.
-        witness_mont = wtns.data._witnesses.view(np.dtype(bn254_sf_mont))
-        z_std = wtns.data._witnesses
-        public_signals = write_public_signals(
-            wtns.witnesses, compiled.config.num_public
-        )
-    else:
-        # Path 2: compute witness from circuit + inputs (production)
-        from rabbitsnark.circom.witness_calculator import (
-            CircomWitnessCalculator,
-            load_w2s,
-        )
-
-        print(f"Loading circuit: {args.circuit}")
-        calc = CircomWitnessCalculator(args.circuit)
-
-        print(f"Loading inputs: {args.input}")
-        with open(args.input) as f:
-            inputs = json.load(f)
-
-        print(f"Loading w2s: {args.w2s}")
-        w2s = load_w2s(args.w2s)
-
-        print("Computing witness...")
-        t0 = time.time()
-        witness = calc.compute_witness(inputs, w2s)
-        elapsed = time.time() - t0
-        print(f"Witness computed in {elapsed:.2f}s")
-
-        # Witness bytes are standard form (from_mont applied in calculator),
-        # tagged as bn254_sf_mont — use as-is for compute_abc, view as
-        # bn254_sf for z_std.
-        witness_mont = witness
-        z_std = witness.view(np.dtype(bn254_sf))
-        public_signals = write_public_signals(
-            z_std[: compiled.config.num_public + 1],
-            compiled.config.num_public,
-        )
+    print(f"Loading wtns: {args.wtns}")
+    wtns = parse_wtns(args.wtns)
+    # Witness is standard form — bitcast for compute_abc.
+    witness_mont = wtns.data._witnesses.view(np.dtype(bn254_sf_mont))
+    z_std = wtns.data._witnesses
+    public_signals = write_public_signals(wtns.witnesses, compiled.config.num_public)
 
     print("Computing Az/Bz...")
     t0 = time.time()
@@ -105,7 +68,6 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
         witness_mont,
         compiled.terms,
         coefficients,
-        compiled.domain_size,
         compiled.domain_size,
     )
     elapsed = time.time() - t0
@@ -156,9 +118,12 @@ def _cmd_circom_verify(args: argparse.Namespace) -> None:
 def _cmd_gnark_prove(args: argparse.Namespace) -> None:
     from pathlib import Path
 
-    from rabbitsnark.gnark import load_gnark_export, load_solver_data
+    import numpy as np
+    from jax import lax
+    from zk_dtypes import bn254_sf, bn254_sf_mont
+
+    from rabbitsnark.gnark import load_gnark_export
     from rabbitsnark.groth16 import compile_gnark
-    from rabbitsnark.r1cs_solver import solve_and_compute
 
     export_dir = Path(args.export_dir)
 
@@ -173,18 +138,21 @@ def _cmd_gnark_prove(args: argparse.Namespace) -> None:
     print("Compiling proving key...")
     compiled = compile_gnark(data)
 
-    print("Solving witness + computing Az/Bz via native solver...")
-    solver = load_solver_data(export_dir)
-    z_std, az_mont, bz_mont = solve_and_compute(data.witness_full, solver)
-
+    # Witness (Montgomery form) → standard form for the MSMs and public signals.
+    # Az/Bz come straight from the gnark export (solution_a/b) — no solving here.
+    z_std = np.asarray(
+        lax.convert_element_type(
+            np.asarray(data.witness_full).view(bn254_sf_mont), bn254_sf
+        )
+    )
     public_signals = [str(int(z_std[i])) for i in range(compiled.config.num_public)]
 
     print("Generating proof...")
     t0 = time.time()
     proof, public_signals = compiled.prove(
         z_std,
-        az_mont,
-        bz_mont,
+        data.az_mont,
+        data.bz_mont,
         public_signals,
         no_zk=args.no_zk,
         deterministic=args.deterministic,
@@ -238,18 +206,9 @@ def _add_circom_subcommands(subparsers: argparse._SubParsersAction) -> None:
 
     prove = circom_sub.add_parser("prove", help="Generate a Groth16 proof")
     prove.add_argument("zkey", help="proving key (.zkey)")
+    prove.add_argument("wtns", help="pre-computed witness (.wtns), e.g. from snarkjs")
     prove.add_argument("proof", help="output proof path (.json)")
     prove.add_argument("public", help="output public signals path (.json)")
-    # Witness source: --wtns or --circuit + --input + --w2s
-    witness_group = prove.add_mutually_exclusive_group(required=True)
-    witness_group.add_argument("--wtns", help="pre-computed witness (.wtns)")
-    witness_group.add_argument("--circuit", help="compiled circuit (.so)")
-    prove.add_argument(
-        "--input", help="circuit inputs (.json), required with --circuit"
-    )
-    prove.add_argument(
-        "--w2s", help="witness-to-signal mapping (.json), required with --circuit"
-    )
 
     verify = circom_sub.add_parser("verify", help="Verify a Groth16 proof")
     verify.add_argument("vkey", help="verification key (.json)")

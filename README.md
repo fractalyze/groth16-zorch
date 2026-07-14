@@ -14,9 +14,10 @@ and [ZKX](https://github.com/fractalyze/zkx).
 ## Features
 
 - Parse [circom](https://docs.circom.io/) proving key (`.zkey`) files
-- Two witness paths for circom: pre-computed `.wtns` file or compiled circuit `.so` + inputs
+- Circom witness from a pre-computed `.wtns` file (e.g. produced by snarkjs)
 - Load [gnark](https://github.com/Consensys/gnark) binary exports for circuit proving
-- Native R1CS solver via [r1cs-solver](https://github.com/fractalyze/r1cs-solver) shared library
+- Az/Bz evaluated in pure JAX (`jax.ops.segment_sum` over the BN254 field dtype),
+  so they run on the GPU alongside the prover — no native library needed
 - Groth16 proof generation with snarkjs-compatible JSON output
 
 ## How to build
@@ -52,12 +53,8 @@ and [ZKX](https://github.com/fractalyze/zkx).
 #### Circom
 
 ```shell
-# Path 1: pre-computed witness (.wtns)
-rabbitsnark circom prove <circuit.zkey> <proof.json> <public.json> --wtns <witness.wtns>
-
-# Path 2: compiled circuit (.so) + inputs (production)
-rabbitsnark circom prove <circuit.zkey> <proof.json> <public.json> \
-    --circuit <circuit.so> --input <input.json> --w2s <w2s.json>
+# Witness is a pre-computed .wtns (e.g. `snarkjs wtns calculate`)
+rabbitsnark circom prove <circuit.zkey> <witness.wtns> <proof.json> <public.json>
 
 rabbitsnark circom verify <vkey.json> <public.json> <proof.json>
 ```
@@ -79,64 +76,47 @@ from zk_dtypes import bn254_sf_mont
 
 from rabbitsnark.circom.wtns import parse_wtns
 from rabbitsnark.circom.zkey import parse_zkey
+from rabbitsnark.circom.zkey_to_terms import zkey_to_terms
 from rabbitsnark.groth16 import compile_circom, write_public_signals
-from rabbitsnark.r1cs_solver import compute_abc
+from rabbitsnark.r1cs import compute_abc
 
 zkey = parse_zkey("path/to/circuit.zkey")
-compiled = compile_circom(zkey)  # one-time: parse zkey, build CSR + arrays
+compiled = compile_circom(zkey)  # one-time: parse zkey, build term matrices + arrays
 
 wtns = parse_wtns("path/to/circuit.wtns")
 witness_mont = wtns.data._witnesses.view(np.dtype(bn254_sf_mont))
+_terms, coefficients = zkey_to_terms(zkey)
 az_mont, bz_mont = compute_abc(
-    witness_mont, compiled.csr, compiled.domain_size, compiled.domain_size
+    witness_mont, compiled.terms, coefficients,
+    compiled.domain_size, compiled.domain_size,
 )
 z_std = wtns.data._witnesses
 public_signals = write_public_signals(wtns.witnesses, compiled.config.num_public)
 proof, public_signals = compiled.prove(z_std, az_mont, bz_mont, public_signals)
 ```
 
-#### Circom (`.so` + `input.json`)
-
-```python
-import numpy as np
-from zk_dtypes import bn254_sf
-
-from rabbitsnark.circom.witness_calculator import CircomWitnessCalculator, load_w2s
-from rabbitsnark.circom.zkey import parse_zkey
-from rabbitsnark.groth16 import compile_circom, write_public_signals
-from rabbitsnark.r1cs_solver import compute_abc
-
-zkey = parse_zkey("path/to/circuit.zkey")
-compiled = compile_circom(zkey)
-
-calc = CircomWitnessCalculator("path/to/circuit.so")
-w2s = load_w2s("path/to/w2s.json")
-witness = calc.compute_witness({"a": "3", "b": "4", "c": "5"}, w2s)
-
-az_mont, bz_mont = compute_abc(
-    witness, compiled.csr, compiled.domain_size, compiled.domain_size
-)
-z_std = witness.view(np.dtype(bn254_sf))
-public_signals = write_public_signals(
-    z_std[: compiled.config.num_public + 1], compiled.config.num_public
-)
-proof, public_signals = compiled.prove(z_std, az_mont, bz_mont, public_signals)
-```
-
 #### Gnark binary export
 
 ```python
-from rabbitsnark.gnark import load_gnark_export, load_solver_data
-from rabbitsnark.groth16 import compile_gnark
-from rabbitsnark.r1cs_solver import solve_and_compute
+import numpy as np
+from jax import lax
+from zk_dtypes import bn254_sf, bn254_sf_mont
 
+from rabbitsnark.gnark import load_gnark_export
+from rabbitsnark.groth16 import compile_gnark
+
+# The export carries the solved witness and Az/Bz (solution_a/b), both
+# produced by gnark's Go solver — nothing is recomputed here.
 data = load_gnark_export("path/to/export/")
 compiled = compile_gnark(data)
 
-solver = load_solver_data("path/to/export/")
-z_std, az_mont, bz_mont = solve_and_compute(data.witness_full, solver)
+z_std = np.asarray(
+    lax.convert_element_type(data.witness_full.view(bn254_sf_mont), bn254_sf)
+)
 public_signals = [str(int(z_std[i])) for i in range(compiled.config.num_public)]
-proof, public_signals = compiled.prove(z_std, az_mont, bz_mont, public_signals)
+proof, public_signals = compiled.prove(
+    z_std, data.az_mont, data.bz_mont, public_signals
+)
 ```
 
 The output `proof.json` and `public.json` follow the same JSON schema as
@@ -150,16 +130,13 @@ snarkjs groth16 verify verification_key.json public.json proof.json
 
 ```
 rabbitsnark/
-  r1cs_solver/     — Native r1cs-solver wrapper (shared by circom + gnark)
-                     CSRMatrices, compute_abc, solve_witness, solve_and_compute
-  circom/          — Circom format parsers + witness calculator
+  r1cs.py          — TermMatrices + compute_abc (Az/Bz via jax.ops.segment_sum)
+  circom/          — Circom format parsers
     zkey/          — .zkey parser (proving key)
     wtns/          — .wtns parser (witness)
-    zkey_to_csr.py — zkey coefficients → CSR (aR² double Montgomery)
-    witness_calculator.py — circuit .so ctypes wrapper
+    zkey_to_terms.py — zkey coefficients → TermMatrices
   gnark/           — Gnark binary export loaders
-    loader.py      — load_gnark_export (points, witness)
-    compute_abc.py — load_solver_data (CSR, levels, hints)
+    loader.py      — load_gnark_export (points, witness, Az/Bz)
   groth16/         — Groth16 prover + verifier
     prover.py      — compile_circom, compile_gnark, CompiledProver.prove
     verifier.py    — verify
@@ -176,21 +153,21 @@ ecosystem:
 | ------------------------------------ | -------------- | -------------- | ------------------ |
 | Input `.zkey`                        | yes            | yes            | yes                |
 | Input `.wtns`                        | yes            | yes            | yes                |
-| Input circuit `.so` + inputs         | —              | —              | yes                |
 | Output `proof.json`                  | snarkjs format | snarkjs format | snarkjs format     |
 | Verify with `snarkjs groth16 verify` | yes            | yes            | yes                |
 
 ### Gnark
 
-RabbitSNARK-py loads binary exports produced by gnark's Go exporter
-([sp1-groth16-bench](https://github.com/fractalyze/sp1-groth16-bench)
-`cmd/export`):
+RabbitSNARK-py loads binary exports produced by a gnark Go program (see
+`tests/gnark/gen_fixture` for a minimal example). The export must include
+`witness_full.bin` and `solution_a/b.bin` — the witness and Az/Bz that gnark's
+`r1csTyped.Solve` computes natively:
 
 |                                           | gnark (Go)         | **RabbitSNARK-py**           |
 | ----------------------------------------- | ------------------ | ---------------------------- |
 | Binary export (`metadata.json` + `*.bin`) | produces           | consumes                     |
 | Proving key points                        | setup              | loaded from export           |
-| Witness solving                           | Go solver          | native r1cs-solver           |
+| Witness + Az/Bz                           | Go solver          | loaded from export           |
 | Proof generation                          | `groth16.Prove()`  | `compiled.prove()`           |
 | Verification                              | `groth16.Verify()` | `verify(vk, proof, signals)` |
 
@@ -203,8 +180,7 @@ bazel test //...
 Test organization:
 
 - `//tests/circom:e2e_test` — Circom prove/verify via `.wtns`
-- `//tests/circom:e2e_circuit_test` — Circom prove/verify via circuit `.so` + inputs
-- `//tests/gnark:e2e_test` — Gnark export solve/prove/verify
+- `//tests/gnark:e2e_test` — Gnark export prove/verify
 - `//tests/circom:zkey_test` — `.zkey` parser unit tests
 - `//tests/circom:wtns_test` — `.wtns` parser unit tests
 

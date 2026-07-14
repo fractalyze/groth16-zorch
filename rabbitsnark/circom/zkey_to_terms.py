@@ -13,11 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Convert zkey coefficients to term-based format for r1cs-solver.
+"""Convert zkey coefficients to term-based format.
 
 The zkey file stores R1CS coefficients as a list of (matrix, constraint,
-signal, value) tuples.  This module converts them to term-based format
-compatible with the native ``compute_abc`` function from r1cs-solver.
+signal, value) tuples.  This module converts them to the term-based
+``TermMatrices`` consumed by ``rabbitsnark.r1cs.compute_abc``.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from rabbitsnark.circom.zkey.zkey import ZKeyV1
-    from rabbitsnark.r1cs_solver import TermMatrices
+    from rabbitsnark.r1cs import TermMatrices
 
 FIELD_ELEM_SIZE = 32  # 256-bit BN254 scalar = 32 bytes
 
@@ -37,7 +37,7 @@ def zkey_to_terms(zkey: "ZKeyV1") -> tuple["TermMatrices", np.ndarray]:
     """Convert zkey coefficients to term-based format.
 
     Builds term matrices for A and B from zkey coefficients.
-    C matrix is empty (Groth16 computes Cz = Az ⊙ Bz via Hadamard).
+    C is omitted — Groth16 recovers Cz = Az ⊙ Bz via a Hadamard product.
 
     Args:
         zkey: Parsed proving key (ZKeyV1).
@@ -46,7 +46,7 @@ def zkey_to_terms(zkey: "ZKeyV1") -> tuple["TermMatrices", np.ndarray]:
         Tuple of (TermMatrices, coefficients) where coefficients is
         (num_coefficients, 32) uint8 array.
     """
-    from rabbitsnark.r1cs_solver import TermMatrices
+    from rabbitsnark.r1cs import TermMatrices
 
     n = zkey.domain_size
     modulus = zkey.header_groth.r.to_int()
@@ -98,10 +98,6 @@ def zkey_to_terms(zkey: "ZKeyV1") -> tuple["TermMatrices", np.ndarray]:
     a_offsets, a_terms = _build_terms(a_coo, n)
     b_offsets, b_terms = _build_terms(b_coo, n)
 
-    # Empty C matrix
-    c_offsets = np.zeros(n + 1, dtype=np.int64)
-    c_terms = np.array([], dtype=np.int32)
-
     # Build coefficient table as (num_coefficients, 32) uint8
     coeff_array = (
         np.array([list(v) for v in coeff_list], dtype=np.uint8).reshape(
@@ -117,8 +113,6 @@ def zkey_to_terms(zkey: "ZKeyV1") -> tuple["TermMatrices", np.ndarray]:
             a_terms=a_terms,
             b_offsets=b_offsets,
             b_terms=b_terms,
-            c_offsets=c_offsets,
-            c_terms=c_terms,
         ),
         coeff_array,
     )

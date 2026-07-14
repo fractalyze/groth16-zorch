@@ -23,25 +23,33 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 from absl.testing import absltest
+from jax import lax
+from zk_dtypes import bn254_sf, bn254_sf_mont
 
-from rabbitsnark.gnark import load_gnark_export, load_solver_data
+from rabbitsnark.gnark import load_gnark_export
 from rabbitsnark.groth16 import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
-from rabbitsnark.r1cs_solver import solve_and_compute
 
 
 class TestGnarkE2EProveVerify(absltest.TestCase):
-    """End-to-end: load gnark export -> solve -> prove -> verify."""
+    """End-to-end: load gnark export -> prove -> verify.
+
+    Az/Bz come straight from the export (solution_a/b, computed by gnark's
+    Go solver); the witness is converted Montgomery -> standard form here.
+    """
 
     def setUp(self):
         self.data_dir = Path(__file__).parent / "data" / "tiny_multiply"
         self.data = load_gnark_export(self.data_dir)
         self.compiled = compile_gnark(self.data)
-        solver = load_solver_data(self.data_dir)
-        self.z_std, self.az_mont, self.bz_mont = solve_and_compute(
-            self.data.witness_full,
-            solver,
+        self.az_mont = self.data.az_mont
+        self.bz_mont = self.data.bz_mont
+        self.z_std = np.asarray(
+            lax.convert_element_type(
+                np.asarray(self.data.witness_full).view(bn254_sf_mont), bn254_sf
+            )
         )
         self.public_signals = [
             str(int(self.z_std[i])) for i in range(self.compiled.config.num_public)

@@ -26,9 +26,9 @@ import numpy as np
 class GnarkProvingData:
     """All data needed to generate a gnark Groth16 proof.
 
-    Loaded from the binary export produced by cmd/export.
-    Field elements and coordinates are in Montgomery form (raw bytes on disk).
-    All points are affine coordinates.
+    Loaded from the binary export produced by gnark's ``r1csTyped.Solve``
+    (see tests/gnark/gen_fixture). Field elements and coordinates are in
+    Montgomery form (raw bytes on disk). All points are affine coordinates.
     """
 
     # Sizes
@@ -39,8 +39,10 @@ class GnarkProvingData:
     num_constraints: int
     domain_size: int
 
-    # Witness (from Go solver)
+    # Witness + constraint evaluations, all produced by gnark's Go solver.
     witness_full: np.ndarray  # (num_wires,) bn254_sf_mont
+    az_mont: np.ndarray  # (domain_size,) bn254_sf_mont — A·z, zero-padded
+    bz_mont: np.ndarray  # (domain_size,) bn254_sf_mont — B·z, zero-padded
 
     # PK points — numpy arrays with native ZK dtypes
     # All uncompacted (zeros at infinity positions)

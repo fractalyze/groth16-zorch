@@ -69,6 +69,12 @@ def load_gnark_export(
     witness_full = _read_field_elements_native(d / "witness_full.bin", num_wires)
     print(f"  witness_full: {time.perf_counter() - t:.1f}s")
 
+    # Constraint evaluations A·z, B·z — gnark's Solve already computed these
+    # (solution.A / solution.B). Load them straight, zero-padded to the NTT
+    # domain, so no Az/Bz recomputation is needed on the Python side.
+    az_mont = _read_solution(d / "solution_a.bin", num_constraints, domain_size)
+    bz_mont = _read_solution(d / "solution_b.bin", num_constraints, domain_size)
+
     t = time.perf_counter()
     pk_a_g1 = _read_g1_native(d / "pk_a_g1.bin")
     pk_b_g1 = _read_g1_native(d / "pk_b_g1.bin")
@@ -96,6 +102,8 @@ def load_gnark_export(
         num_constraints=num_constraints,
         domain_size=domain_size,
         witness_full=witness_full,
+        az_mont=az_mont,
+        bz_mont=bz_mont,
         pk_a_g1=pk_a_g1,
         pk_b_g1=pk_b_g1,
         pk_b_g2=pk_b_g2,
@@ -120,6 +128,17 @@ def _read_field_elements_native(path: Path, count: int) -> np.ndarray:
         raw.size == count * FIELD_ELEM_SIZE
     ), f"Expected {count * FIELD_ELEM_SIZE} bytes, got {raw.size} in {path}"
     return raw.view(np.dtype(bn254_sf_mont))
+
+
+def _read_solution(path: Path, num_constraints: int, domain_size: int) -> np.ndarray:
+    """Read a solution vector (A·z or B·z) and zero-pad to the NTT domain.
+
+    On disk the vector has ``num_constraints`` Montgomery-form elements; the
+    prover expects length ``domain_size`` (a power of two ≥ num_constraints).
+    """
+    out = np.zeros(domain_size, dtype=np.dtype(bn254_sf_mont))
+    out[:num_constraints] = _read_field_elements_native(path, num_constraints)
+    return out
 
 
 def _read_g1_native(path: Path) -> np.ndarray:

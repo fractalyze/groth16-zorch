@@ -14,8 +14,9 @@
 # ==============================================================================
 """SP1 Groth16 benchmark using JaxBenchmark.
 
-Loads a gnark export, compiles the proving key, solves the witness, then
-benchmarks prove iterations.  Verification runs after timing via verify_fn.
+Loads a gnark export (witness + Az/Bz already solved by gnark's Go solver),
+compiles the proving key, then benchmarks prove iterations.  Verification
+runs after timing via verify_fn.
 
 Usage:
     bazel run //benchmark:sp1_groth16 -- \
@@ -39,7 +40,7 @@ import numpy as np
 from zk_dtypes import bn254_sf_mont
 from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
 
-from rabbitsnark.gnark import load_gnark_export, load_solver_data
+from rabbitsnark.gnark import load_gnark_export
 from rabbitsnark.groth16.prover import compile_gnark
 from rabbitsnark.groth16.verifier import VerificationKey, verify
 
@@ -81,11 +82,6 @@ class Groth16Benchmark(JaxBenchmark):
             default="sp1",
             help="Circuit name for metadata (default: sp1)",
         )
-        parser.add_argument(
-            "--no-solver",
-            action="store_true",
-            help="Skip solver benchmark (saves ~10 GB memory)",
-        )
 
     def get_ops(self, args: argparse.Namespace) -> Iterable[BenchmarkOp]:
         export_dir = Path(args.export_dir)
@@ -119,65 +115,16 @@ class Groth16Benchmark(JaxBenchmark):
             "constraints": str(data.num_constraints),
         }
 
-        # --- Solver benchmark (solve_witness only, excludes compute_abc) ---
-        if not args.no_solver:
-            from rabbitsnark.r1cs_solver import solve_witness
-
-            print("\nLoading solver data...")
-            t0 = time.perf_counter()
-            solver = load_solver_data(export_dir)
-            t_solver_load = time.perf_counter() - t0
-            print(f"Solver data load: {t_solver_load:.1f}s")
-
-            # Reference solution for verification.
-            ref_witness = solve_witness(data.witness_full, solver)
-            ref_hash = _hash_bytes(ref_witness.tobytes())
-
-            solve_last = {}
-
-            def solve_fn():
-                w = solve_witness(data.witness_full, solver)
-                solve_last["witness"] = w
-                return w
-
-            def solve_verify_fn():
-                return _hash_bytes(solve_last["witness"].tobytes()) == ref_hash
-
-            yield BenchmarkOp(
-                name="groth16_sp1_verifier_solver",
-                fn=solve_fn,
-                metadata=metadata,
-                input_hash=input_hash,
-                output_hash_fn=lambda: _hash_bytes(solve_last["witness"].tobytes()),
-                verify_fn=solve_verify_fn,
-            )
-
-            del solver  # Free ~10 GB CSR matrices before proving.
-
-        # --- Prove benchmark (compute_abc + NTT + MSM + EC) ---
-        # compute_abc (term eval) included to match gnark's Prove() scope.
-        from rabbitsnark.gnark.compute_abc import (
-            _parse_coefficients,
-            load_term_matrices,
-        )
-        from rabbitsnark.r1cs_solver import compute_abc
-        from rabbitsnark.r1cs_solver.solver import make_abc_buffers
-
-        print("\nLoading term matrices for prove...")
-        t0 = time.perf_counter()
-        tm = load_term_matrices(export_dir)
-        coefficients = _parse_coefficients(export_dir / "r1cs_coefficients.bin")
-        t_load = time.perf_counter() - t0
-        print(f"Term load: {t_load:.1f}s")
-
-        # z_std needed only for public_signals extraction (one-time).
-        print("Preparing witness...")
+        # --- Prove benchmark (NTT + MSM + EC) ---
+        # Az/Bz come straight from the export (solution_a/b, computed by gnark's
+        # Go solver), matching the runtime path — no Az/Bz recomputation here.
+        print("\nPreparing witness...")
         t0 = time.perf_counter()
         from jax import lax
         from zk_dtypes import bn254_sf
 
         z_mont = jnp.array(data.witness_full, dtype=bn254_sf_mont)
-        # Only convert the public inputs (small slice) instead of all 15M elements.
+        # Only convert the public inputs (small slice) instead of all wires.
         z_pub_std = np.asarray(
             lax.convert_element_type(z_mont[: compiled.config.num_public], bn254_sf)
         )
@@ -189,25 +136,14 @@ class Groth16Benchmark(JaxBenchmark):
         ]
         vk = VerificationKey.from_gnark(data)
 
-        # Pre-allocate buffers to avoid ~3 GB alloc+copy per iteration.
-        abc_bufs = make_abc_buffers(data.witness_full, coefficients, data.domain_size)
-
         # Mutable container to capture the last proof for verify_fn.
         last = {}
 
         def prove_fn():
-            az, bz = compute_abc(
-                data.witness_full,
-                tm,
-                coefficients,
-                data.num_constraints,
-                data.domain_size,
-                _bufs=abc_bufs,
-            )
             proof, pub = compiled.prove(
                 z_mont,
-                az,
-                bz,
+                data.az_mont,
+                data.bz_mont,
                 public_signals,
                 deterministic=args.deterministic,
             )
