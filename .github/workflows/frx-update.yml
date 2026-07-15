@@ -1,11 +1,11 @@
-name: JAX Update
+name: FRX Update
 
 on:
   repository_dispatch:
-    types: [jax-update]
+    types: [frx-update]
 
 concurrency:
-  group: jax-update
+  group: frx-update
   cancel-in-progress: true
 
 jobs:
@@ -19,8 +19,13 @@ jobs:
       - name: Bump frx/frxlib/frx-cuda12 plugins
         uses: fractalyze/github-actions/pip-bump@main
         with:
+          # `jax` is not a leftover: pip-bump builds a link to
+          # github.com/fractalyze/<upstream_repo>/commit/<sha>, and the repo
+          # publishing these wheels is still named jax. fractalyze/frx exists
+          # but is a PyPI-name placeholder, so pointing there would link a
+          # commit that does not exist in it.
           upstream_repo: jax
-          version: ${{ github.event.client_payload.jax_version }}
+          version: ${{ github.event.client_payload.frx_version }}
           upstream_commit: ${{ github.event.client_payload.commit }}
           packages: frx frxlib frx-cuda12-pjrt frx-cuda12-plugin
           github_token: ${{ secrets.BUMPER_GH_PAT }}
