@@ -35,7 +35,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-import jax.numpy as jnp
+import frx.numpy as jnp
 import numpy as np
 from zk_dtypes import bn254_sf_mont
 from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
@@ -120,7 +120,7 @@ class Groth16Benchmark(JaxBenchmark):
         # Go solver), matching the runtime path — no Az/Bz recomputation here.
         print("\nPreparing witness...")
         t0 = time.perf_counter()
-        from jax import lax
+        from frx import lax
         from zk_dtypes import bn254_sf
 
         z_mont = jnp.array(data.witness_full, dtype=bn254_sf_mont)

@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 from absl.testing import absltest
-from jax import lax
+from frx import lax
 from zk_dtypes import bn254_sf, bn254_sf_mont
 
 from groth16_zorch.gnark import load_gnark_export

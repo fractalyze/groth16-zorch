@@ -52,10 +52,10 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, NamedTuple
 
-import jax
-import jax.numpy as jnp
+import frx
+import frx.numpy as jnp
 import numpy as np
-from jax import lax
+from frx import lax
 from zk_dtypes import (
     bn254_g1_affine,
     bn254_g1_jacobian,
@@ -68,7 +68,7 @@ from zk_dtypes import (
 from .proof import Groth16Proof, write_public_signals  # noqa: F401
 
 if TYPE_CHECKING:
-    from jax import Array
+    from frx import Array
 
     from groth16_zorch.circom.zkey.verifying_key import G1Point, G2Point
     from groth16_zorch.circom.zkey.zkey import ZKeyV1
@@ -179,9 +179,9 @@ class CompiledProver:
         msm_4 = lax.msm(z_std[private_start:], self.pc1)
         msm_5 = lax.msm(h_scalars, self.ph1)
         # Phase 3: EC assembly on CPU.
-        cpu = jax.devices("cpu")[0]
+        cpu = frx.devices("cpu")[0]
         _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
-        with jax.default_device(cpu):
+        with frx.default_device(cpu):
             return _prove_phase3(
                 _to_cpu(msm_1),
                 _to_cpu(msm_2),
@@ -418,7 +418,7 @@ def compile_gnark(data: GnarkProvingData) -> CompiledProver:
 # ---------------------------------------------------------------------------
 
 
-@partial(jax.jit, static_argnums=(0,))
+@partial(frx.jit, static_argnums=(0,))
 def _prove_ntt(
     config: ProveConfig,
     az_mont: Array,
@@ -472,7 +472,7 @@ def _prove_ntt(
 # ---------------------------------------------------------------------------
 
 
-@partial(jax.jit, static_argnums=())
+@partial(frx.jit, static_argnums=())
 def _prove_phase3(
     msm_1: Array,
     msm_2: Array,

@@ -29,10 +29,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import jax
-import jax.numpy as jnp
+import frx
+import frx.numpy as jnp
 import numpy as np
-from jax import lax
+from frx import lax
 from zk_dtypes import bn254_g1_affine, bn254_g2_affine, bn254_sf
 
 from groth16_zorch.circom.zkey.verifying_key import G1Point, G2Point
@@ -181,8 +181,8 @@ def verify(
 
     # All verification ops run on CPU (pairing_check only has CPU
     # legalization, and lax.msm works on both CPU and GPU).
-    cpu = jax.devices("cpu")[0]
-    with jax.default_device(cpu):
+    cpu = frx.devices("cpu")[0]
+    with frx.default_device(cpu):
         vk_x_affine = lax.msm(msm_scalars, msm_points)
 
         # Extract vk_x coordinates from JAX result

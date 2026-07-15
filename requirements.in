@@ -1,8 +1,9 @@
 absl-py
-jax==0.10.0.dev20260709073514
-jaxlib==0.10.0.dev20260709073514
-jax-cuda12-pjrt==0.10.0.dev20260709073514
-jax-cuda12-plugin==0.10.0.dev20260709073514
+frx==0.10.0.dev20260715051143
+frxlib==0.10.0.dev20260715051143
+frx-cuda12-pjrt==0.10.0.dev20260715051143
+frx-cuda12-plugin==0.10.0.dev20260715051143
 numpy
-zk-dtypes==0.0.8
+# Must move with frx: this frx build requires zk_dtypes >= 0.0.10.
+zk-dtypes==0.0.10
 zkbench==0.4.0
