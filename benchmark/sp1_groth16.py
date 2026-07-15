@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""SP1 Groth16 benchmark using JaxBenchmark.
+"""SP1 Groth16 benchmark using FrxBenchmark.
 
 Loads a gnark export (witness + Az/Bz already solved by gnark's Go solver),
 compiles the proving key, then benchmarks prove iterations.  Verification
@@ -38,7 +38,7 @@ from typing import Iterable
 import frx.numpy as jnp
 import numpy as np
 from zk_dtypes import bn254_sf_mont
-from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
+from zkbench import BenchmarkConfig, BenchmarkOp, FrxBenchmark
 
 from groth16_zorch.gnark import load_gnark_export
 from groth16_zorch.groth16.prover import compile_gnark
@@ -54,7 +54,7 @@ def _proof_hash(proof) -> str:
     return hashlib.sha256(proof_json.encode()).hexdigest()
 
 
-class Groth16Benchmark(JaxBenchmark):
+class Groth16Benchmark(FrxBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

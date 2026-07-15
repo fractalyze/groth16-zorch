@@ -337,7 +337,7 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
 def compile_gnark(data: GnarkProvingData) -> CompiledProver:
     """Compile gnark exported proving data into a reusable prover.
 
-    Converts gnark's tuple-based point arrays into JAX affine arrays
+    Converts gnark's tuple-based point arrays into FRX affine arrays
     suitable for ``lax.msm``.  No XYZZ conversion or window_bits needed.
 
     Args:
@@ -564,17 +564,17 @@ def _build_shift_powers(shift: Array, log_n: int) -> Array:
 
 
 def _g1_to_affine(point: G1Point) -> Array:
-    """Convert a single G1Point to a JAX affine scalar."""
+    """Convert a single G1Point to an FRX affine scalar."""
     return jnp.array(bn254_g1_affine((point.x, point.y)), dtype=bn254_g1_affine)
 
 
 def _g2_to_affine(point: G2Point) -> Array:
-    """Convert a single G2Point to a JAX affine scalar."""
+    """Convert a single G2Point to an FRX affine scalar."""
     return jnp.array(bn254_g2_affine((point.x, point.y)), dtype=bn254_g2_affine)
 
 
 def _g1_points_to_array(points: list[G1Point]) -> Array:
-    """Convert a list of G1Points to a JAX affine array."""
+    """Convert a list of G1Points to an FRX affine array."""
     return jnp.array(
         [bn254_g1_affine((p.x, p.y)) for p in points],
         dtype=bn254_g1_affine,
@@ -582,7 +582,7 @@ def _g1_points_to_array(points: list[G1Point]) -> Array:
 
 
 def _g2_points_to_array(points: list[G2Point]) -> Array:
-    """Convert a list of G2Points to a JAX affine array."""
+    """Convert a list of G2Points to an FRX affine array."""
     return jnp.array(
         [bn254_g2_affine((p.x, p.y)) for p in points],
         dtype=bn254_g2_affine,

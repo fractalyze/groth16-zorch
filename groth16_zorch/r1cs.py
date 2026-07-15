@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Term-based R1CS matrices and Az/Bz evaluation in pure JAX.
+"""Term-based R1CS matrices and Az/Bz evaluation in pure FRX.
 
 The A/B sparse matrix-vector products (Az = A·z, Bz = B·z over BN254 Fr) are a
 segmented sum of coefficient·wire products, which ``frx.ops.segment_sum``
@@ -111,7 +111,7 @@ def compute_abc(
         domain_size: NTT domain size (power of 2); output length and row count.
 
     Returns:
-        (az, bz) JAX arrays of shape (domain_size,) in Montgomery form.
+        (az, bz) FRX arrays of shape (domain_size,) in Montgomery form.
     """
     coeff = jnp.asarray(
         coefficients.reshape(-1).view(_MONT_DT)

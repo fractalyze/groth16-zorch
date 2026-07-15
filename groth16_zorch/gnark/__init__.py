@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Gnark Groth16 support: load exported circuit data and prove via JAX."""
+"""Gnark Groth16 support: load exported circuit data and prove via FRX."""
 
 from .loader import load_gnark_export
 from .types import GnarkProvingData

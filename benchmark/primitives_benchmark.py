@@ -37,7 +37,7 @@ import frx.numpy as jnp
 import numpy as np
 from frx import lax
 from zk_dtypes import bn254_g1_affine_mont, bn254_sf, bn254_sf_mont  # noqa: F401
-from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
+from zkbench import BenchmarkConfig, BenchmarkOp, FrxBenchmark
 
 # gnark uses generator 5 for NTT evaluation domain.
 GNARK_GENERATOR = 5
@@ -74,7 +74,7 @@ _EXPECTED_HASHES: dict[tuple[str, int], str] = {
 
 
 def _hash_array(arr: jnp.ndarray) -> str:
-    """Compute SHA-256 hash of a JAX array's raw bytes."""
+    """Compute SHA-256 hash of an FRX array's raw bytes."""
     arr_np = np.array(arr)
     if arr_np.ndim == 0:
         arr_np = arr_np.reshape(1)
@@ -95,7 +95,7 @@ def _generate_bases(n: int) -> jnp.ndarray:
     return jnp.array(np.array([gen] * n, dtype=np.dtype(bn254_g1_affine_mont)))
 
 
-class PrimitivesBenchmark(JaxBenchmark):
+class PrimitivesBenchmark(FrxBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

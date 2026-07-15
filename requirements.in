@@ -6,4 +6,4 @@ frx-cuda12-plugin==0.10.0.dev20260715051143
 numpy
 # Must move with frx: this frx build requires zk_dtypes >= 0.0.10.
 zk-dtypes==0.0.10
-zkbench==0.4.0
+zkbench==0.5.0

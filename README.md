@@ -1,6 +1,6 @@
 # groth16-zorch
 
-A Groth16 prover implementation in Python using [Zorch](https://github.com/fractalyze/jax).
+A Groth16 prover implementation in Python using [Zorch](https://github.com/fractalyze/zorch).
 This is the Python counterpart of [RabbitSNARK](https://github.com/fractalyze/rabbitsnark),
 which implements the Groth16 proving scheme using HLO via [PrimeIR](https://github.com/fractalyze/prime-ir)
 and [ZKX](https://github.com/fractalyze/zkx).
@@ -9,14 +9,14 @@ and [ZKX](https://github.com/fractalyze/zkx).
 | -------------------------------------------------------- | -------- | -------------- |
 | [rapidsnark](https://github.com/iden3/rapidsnark)        | C++      | Native         |
 | [RabbitSNARK](https://github.com/fractalyze/rabbitsnark) | C++      | HLO (ZKIR/ZKX) |
-| **groth16-zorch**                                        | Python   | Zorch          |
+| **groth16-zorch**                                        | Python   | FRX            |
 
 ## Features
 
 - Parse [circom](https://docs.circom.io/) proving key (`.zkey`) files
 - Circom witness from a pre-computed `.wtns` file (e.g. produced by snarkjs)
 - Load [gnark](https://github.com/Consensys/gnark) binary exports for circuit proving
-- Az/Bz evaluated in pure JAX (`frx.ops.segment_sum` over the BN254 field dtype),
+- Az/Bz evaluated in pure FRX (`frx.ops.segment_sum` over the BN254 field dtype),
   so they run on the GPU alongside the prover — no native library needed
 - Groth16 proof generation with snarkjs-compatible JSON output
 
@@ -168,7 +168,7 @@ witness and Az/Bz (gnark's Go solver produces them at export time). So this is a
 
 | prover                       | prove (median) | speedup |
 | ---------------------------- | -------------- | ------- |
-| **groth16-zorch** (JAX, GPU) | **1573 ms**    | 1.50×   |
+| **groth16-zorch** (FRX, GPU) | **1573 ms**    | 1.50×   |
 | gnark ICICLE (GPU)           | 2355 ms        | 1.00×   |
 
 gnark's end-to-end run additionally re-solves the witness on every proof

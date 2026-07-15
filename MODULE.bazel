@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""groth16-zorch — a Groth16 prover in Python on the Zorch/JAX backend.
+"""groth16-zorch — a Groth16 prover in Python on the FRX backend.
 
 bzlmod module. bazel 9 dropped WORKSPACE, so the hermetic Python toolchain and
 pip dependencies are declared here. Every dependency is a Python wheel from the
