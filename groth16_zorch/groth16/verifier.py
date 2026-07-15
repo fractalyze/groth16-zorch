@@ -185,7 +185,7 @@ def verify(
     with frx.default_device(cpu):
         vk_x_affine = lax.msm(msm_scalars, msm_points)
 
-        # Extract vk_x coordinates from JAX result
+        # Extract vk_x coordinates from FRX result
         vk_x_np = np.array(vk_x_affine).item()
         vk_x_coords = vk_x_np.raw
         vk_x_x, vk_x_y = int(vk_x_coords[0]), int(vk_x_coords[1])
