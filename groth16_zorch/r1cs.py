@@ -16,7 +16,7 @@
 """Term-based R1CS matrices and Az/Bz evaluation in pure JAX.
 
 The A/B sparse matrix-vector products (Az = A·z, Bz = B·z over BN254 Fr) are a
-segmented sum of coefficient·wire products, which ``jax.ops.segment_sum``
+segmented sum of coefficient·wire products, which ``frx.ops.segment_sum``
 computes directly over the ``bn254_sf_mont`` field dtype. Running on the
 default device means Az/Bz land on the GPU alongside the rest of the prover,
 with no native shared library and no CPU→GPU copy.
@@ -30,8 +30,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import partial
 
-import jax
-import jax.numpy as jnp
+import frx
+import frx.numpy as jnp
 import numpy as np
 from zk_dtypes import bn254_sf_mont
 
@@ -57,18 +57,18 @@ class TermMatrices:
     b_terms: np.ndarray
 
 
-@partial(jax.jit, static_argnames="num_segments")
+@partial(frx.jit, static_argnames="num_segments")
 def _segment_matvec(
-    coeff: jax.Array,
-    witness: jax.Array,
-    coeff_ids: jax.Array,
-    wire_ids: jax.Array,
-    row_ids: jax.Array,
+    coeff: frx.Array,
+    witness: frx.Array,
+    coeff_ids: frx.Array,
+    wire_ids: frx.Array,
+    row_ids: frx.Array,
     num_segments: int,
-) -> jax.Array:
+) -> frx.Array:
     """Evaluate one matrix row-sum: out[r] = Σ coeff[coeff_id]·witness[wire_id]."""
     prod = coeff[coeff_ids] * witness[wire_ids]
-    return jax.ops.segment_sum(prod, row_ids, num_segments=num_segments)
+    return frx.ops.segment_sum(prod, row_ids, num_segments=num_segments)
 
 
 def _row_ids(offsets: np.ndarray) -> np.ndarray:
@@ -78,12 +78,12 @@ def _row_ids(offsets: np.ndarray) -> np.ndarray:
 
 
 def _matvec(
-    coeff: jax.Array,
-    witness: jax.Array,
+    coeff: frx.Array,
+    witness: frx.Array,
     terms: np.ndarray,
     offsets: np.ndarray,
     domain_size: int,
-) -> jax.Array:
+) -> frx.Array:
     """Az / Bz for one matrix. Offsets are already padded to ``domain_size``."""
     if terms.size == 0:
         return jnp.zeros(domain_size, dtype=bn254_sf_mont)

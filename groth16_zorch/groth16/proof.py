@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from jax import Array
+    from frx import Array
 
 # Mapping from ZK dtype names to snarkjs curve names.
 _DTYPE_TO_CURVE = {

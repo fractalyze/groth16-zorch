@@ -33,9 +33,9 @@ import hashlib
 import sys
 from typing import Iterable
 
-import jax.numpy as jnp
+import frx.numpy as jnp
 import numpy as np
-from jax import lax
+from frx import lax
 from zk_dtypes import bn254_g1_affine_mont, bn254_sf, bn254_sf_mont  # noqa: F401
 from zkbench import BenchmarkConfig, BenchmarkOp, JaxBenchmark
 

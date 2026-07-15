@@ -21,7 +21,7 @@ py_library(
     deps = [
         "//groth16_zorch:gnark",
         "//groth16_zorch:groth16",
-        "@pypi//jax",
+        "@pypi//frx",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
         "@pypi//zkbench",
@@ -38,8 +38,8 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":sp1_groth16_lib",
-        "@pypi//jax_cuda12_pjrt",
-        "@pypi//jax_cuda12_plugin",
+        "@pypi//frx_cuda12_pjrt",
+        "@pypi//frx_cuda12_plugin",
     ],
 )
 
@@ -47,7 +47,7 @@ py_library(
     name = "primitives_benchmark_lib",
     srcs = ["primitives_benchmark.py"],
     deps = [
-        "@pypi//jax",
+        "@pypi//frx",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
         "@pypi//zkbench",
@@ -64,8 +64,8 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":primitives_benchmark_lib",
-        "@pypi//jax_cuda12_pjrt",
-        "@pypi//jax_cuda12_plugin",
+        "@pypi//frx_cuda12_pjrt",
+        "@pypi//frx_cuda12_plugin",
     ],
 )
 

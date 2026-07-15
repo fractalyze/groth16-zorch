@@ -16,7 +16,7 @@ and [ZKX](https://github.com/fractalyze/zkx).
 - Parse [circom](https://docs.circom.io/) proving key (`.zkey`) files
 - Circom witness from a pre-computed `.wtns` file (e.g. produced by snarkjs)
 - Load [gnark](https://github.com/Consensys/gnark) binary exports for circuit proving
-- Az/Bz evaluated in pure JAX (`jax.ops.segment_sum` over the BN254 field dtype),
+- Az/Bz evaluated in pure JAX (`frx.ops.segment_sum` over the BN254 field dtype),
   so they run on the GPU alongside the prover — no native library needed
 - Groth16 proof generation with snarkjs-compatible JSON output
 
@@ -98,7 +98,7 @@ proof, public_signals = compiled.prove(z_std, az_mont, bz_mont, public_signals)
 
 ```python
 import numpy as np
-from jax import lax
+from frx import lax
 from zk_dtypes import bn254_sf, bn254_sf_mont
 
 from groth16_zorch.gnark import load_gnark_export

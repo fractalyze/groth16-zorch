@@ -17,7 +17,7 @@
 
 bzlmod module. bazel 9 dropped WORKSPACE, so the hermetic Python toolchain and
 pip dependencies are declared here. Every dependency is a Python wheel from the
-Fractalyze package index (jax / jaxlib / jax-cuda12-* / zk_dtypes / ...); there
+Fractalyze package index (frx / frxlib / frx-cuda12-* / zk_dtypes / ...); there
 is no native or Bazel-module dependency.
 """
 
@@ -36,7 +36,7 @@ python.toolchain(
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
-    # jax / jaxlib / jax-cuda12-* etc. are published on the Fractalyze index.
+    # frx / frxlib / frx-cuda12-* etc. are published on the Fractalyze index.
     extra_pip_args = ["--extra-index-url=https://fractalyze.github.io/pypi/simple/"],
     hub_name = "pypi",
     python_version = "3.11",

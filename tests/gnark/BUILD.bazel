@@ -40,7 +40,7 @@ py_test(
         "//groth16_zorch:gnark",
         "//groth16_zorch:groth16",
         "@pypi//absl_py",
-        "@pypi//jax",
+        "@pypi//frx",
         "@pypi//zk_dtypes",
     ],
 )
@@ -49,7 +49,7 @@ _E2E_DEPS = [
     "//groth16_zorch:gnark",
     "//groth16_zorch:groth16",
     "@pypi//absl_py",
-    "@pypi//jax",
+    "@pypi//frx",
     "@pypi//numpy",
     "@pypi//zk_dtypes",
 ]
@@ -69,7 +69,7 @@ py_test(
     main = "e2e_test.py",
     tags = ["gpu"],
     deps = _E2E_DEPS + [
-        "@pypi//jax_cuda12_pjrt",
-        "@pypi//jax_cuda12_plugin",
+        "@pypi//frx_cuda12_pjrt",
+        "@pypi//frx_cuda12_plugin",
     ],
 )

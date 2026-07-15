@@ -63,7 +63,7 @@ py_library(
     name = "r1cs",
     srcs = ["r1cs.py"],
     deps = [
-        "@pypi//jax",
+        "@pypi//frx",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
     ],
@@ -104,7 +104,7 @@ py_library(
         ":circom_zkey",
         ":circom_zkey_to_terms",
         ":r1cs",
-        "@pypi//jax",
+        "@pypi//frx",
         "@pypi//numpy",
         "@pypi//zk_dtypes",
     ],
