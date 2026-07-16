@@ -1,8 +1,8 @@
 absl-py
-frx==0.10.0.dev20260715051143
-frxlib==0.10.0.dev20260715051143
-frx-cuda12-pjrt==0.10.0.dev20260715051143
-frx-cuda12-plugin==0.10.0.dev20260715051143
+frx==0.10.0.dev20260716113241
+frxlib==0.10.0.dev20260716113241
+frx-cuda12-pjrt==0.10.0.dev20260716113241
+frx-cuda12-plugin==0.10.0.dev20260716113241
 numpy
 # Must move with frx: this frx build requires zk_dtypes >= 0.0.10.
 zk-dtypes==0.0.10
