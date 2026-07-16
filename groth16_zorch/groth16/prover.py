@@ -53,7 +53,7 @@ from functools import partial
 from typing import TYPE_CHECKING, NamedTuple
 
 import frx
-import frx.numpy as jnp
+import frx.numpy as fnp
 import numpy as np
 from frx import lax
 from zk_dtypes import (
@@ -154,11 +154,11 @@ class CompiledProver:
         """
         # Gnark-specific arrays: None for circom → dummy scalar placeholder
         # (never traced thanks to config.is_circom static branching)
-        den = self.den if self.den is not None else jnp.array(0, dtype=bn254_sf_mont)
+        den = self.den if self.den is not None else fnp.array(0, dtype=bn254_sf_mont)
         inv_sp = (
             self.inv_shift_powers
             if self.inv_shift_powers is not None
-            else jnp.array(0, dtype=bn254_sf_mont)
+            else fnp.array(0, dtype=bn254_sf_mont)
         )
 
         # Phase 1: NTT + h-polynomial (JIT).
@@ -180,7 +180,7 @@ class CompiledProver:
         msm_5 = lax.msm(h_scalars, self.ph1)
         # Phase 3: EC assembly on CPU.
         cpu = frx.devices("cpu")[0]
-        _to_cpu = lambda x: jnp.array(np.array(x), dtype=x.dtype)
+        _to_cpu = lambda x: fnp.array(np.array(x), dtype=x.dtype)
         with frx.default_device(cpu):
             return _prove_phase3(
                 _to_cpu(msm_1),
@@ -234,14 +234,14 @@ class CompiledProver:
             r_int = secrets.randbelow(BN254_FR_MODULUS)
             s_int = secrets.randbelow(BN254_FR_MODULUS)
 
-        r_val = jnp.array(r_int, dtype=bn254_sf)
-        s_val = jnp.array(s_int, dtype=bn254_sf)
+        r_val = fnp.array(r_int, dtype=bn254_sf)
+        s_val = fnp.array(s_int, dtype=bn254_sf)
         neg_rs = -(bn254_sf(r_int) * bn254_sf(s_int))
-        neg_rs_val = jnp.array(neg_rs, dtype=bn254_sf)
+        neg_rs_val = fnp.array(neg_rs, dtype=bn254_sf)
 
         # Auto-detect witness form and convert to standard if needed.
-        if not isinstance(z, jnp.ndarray):
-            z = jnp.array(z)
+        if not isinstance(z, fnp.ndarray):
+            z = fnp.array(z)
         if z.dtype == bn254_sf_mont:
             z_std = lax.convert_element_type(z, bn254_sf)
         else:
@@ -289,7 +289,7 @@ def compile_circom(zkey: ZKeyV1) -> CompiledProver:
         (BN254_FR_MODULUS - 1) // (2 * domain_size),
         BN254_FR_MODULUS,
     )
-    coset_shift = jnp.array(bn254_sf_mont(coset_shift_int), dtype=bn254_sf_mont)
+    coset_shift = fnp.array(bn254_sf_mont(coset_shift_int), dtype=bn254_sf_mont)
     shift_powers = _build_shift_powers(coset_shift, log_n)
 
     # Point arrays (affine — lax.msm takes affine directly)
@@ -353,7 +353,7 @@ def compile_gnark(data: GnarkProvingData) -> CompiledProver:
     # Coset shift powers: [1, g, g², ..., g^(n-1)]
     # gnark uses Fr multiplicative generator (= 5) as coset shift,
     # NOT omega_{2n} which circom/snarkjs uses.
-    coset_shift = jnp.array(
+    coset_shift = fnp.array(
         bn254_sf_mont(GNARK_COSET_GEN),
         dtype=bn254_sf_mont,
     )
@@ -361,7 +361,7 @@ def compile_gnark(data: GnarkProvingData) -> CompiledProver:
 
     # Inverse coset shift powers: [1, g⁻¹, g⁻², ..., g⁻⁽ⁿ⁻¹⁾]
     coset_gen_inv = pow(GNARK_COSET_GEN, BN254_FR_MODULUS - 2, BN254_FR_MODULUS)
-    coset_shift_inv = jnp.array(
+    coset_shift_inv = fnp.array(
         bn254_sf_mont(coset_gen_inv),
         dtype=bn254_sf_mont,
     )
@@ -370,23 +370,23 @@ def compile_gnark(data: GnarkProvingData) -> CompiledProver:
     # Vanishing polynomial denominator: den = 1 / (g^n - 1)
     g_pow_n = pow(GNARK_COSET_GEN, domain_size, BN254_FR_MODULUS)
     den_int = pow(g_pow_n - 1, BN254_FR_MODULUS - 2, BN254_FR_MODULUS)
-    den = jnp.array(bn254_sf_mont(den_int), dtype=bn254_sf_mont)
+    den = fnp.array(bn254_sf_mont(den_int), dtype=bn254_sf_mont)
 
     # Point arrays (affine mont — data is already Montgomery form from loader)
-    pa1 = jnp.array(data.pk_a_g1)
-    pb1 = jnp.array(data.pk_b_g1)
-    pb2 = jnp.array(data.pk_b_g2)
-    pc1 = jnp.array(data.pk_k_g1)
-    ph1 = jnp.array(data.pk_z_g1)
+    pa1 = fnp.array(data.pk_a_g1)
+    pb1 = fnp.array(data.pk_b_g1)
+    pb2 = fnp.array(data.pk_b_g2)
+    pc1 = fnp.array(data.pk_k_g1)
+    ph1 = fnp.array(data.pk_z_g1)
 
     # VK points (affine mont scalars)
-    alpha1 = jnp.array(data.vk_alpha_g1[0])
-    beta1 = jnp.array(data.vk_beta_g1[0])
-    beta2 = jnp.array(data.vk_beta_g2[0])
+    alpha1 = fnp.array(data.vk_alpha_g1[0])
+    beta1 = fnp.array(data.vk_beta_g1[0])
+    beta2 = fnp.array(data.vk_beta_g2[0])
 
     # Delta points (affine mont scalars)
-    delta_g1 = jnp.array(data.pk_delta_g1[0])
-    delta_g2 = jnp.array(data.pk_delta_g2[0])
+    delta_g1 = fnp.array(data.pk_delta_g1[0])
+    delta_g2 = fnp.array(data.pk_delta_g2[0])
 
     config = ProveConfig(
         log_n=log_n,
@@ -550,10 +550,10 @@ def _build_shift_powers(shift: Array, log_n: int) -> Array:
     """Build coset shift powers [1, g, g², ..., g^(n-1)] via O(log n) doubling."""
     dtype = shift.dtype
     one = dtype.type(1)
-    powers = jnp.array([one], dtype=dtype)
+    powers = fnp.array([one], dtype=dtype)
     step_mul = shift
     for _ in range(log_n):
-        powers = jnp.concatenate([powers, powers * step_mul])
+        powers = fnp.concatenate([powers, powers * step_mul])
         step_mul = step_mul * step_mul
     return powers
 
@@ -565,17 +565,17 @@ def _build_shift_powers(shift: Array, log_n: int) -> Array:
 
 def _g1_to_affine(point: G1Point) -> Array:
     """Convert a single G1Point to an FRX affine scalar."""
-    return jnp.array(bn254_g1_affine((point.x, point.y)), dtype=bn254_g1_affine)
+    return fnp.array(bn254_g1_affine((point.x, point.y)), dtype=bn254_g1_affine)
 
 
 def _g2_to_affine(point: G2Point) -> Array:
     """Convert a single G2Point to an FRX affine scalar."""
-    return jnp.array(bn254_g2_affine((point.x, point.y)), dtype=bn254_g2_affine)
+    return fnp.array(bn254_g2_affine((point.x, point.y)), dtype=bn254_g2_affine)
 
 
 def _g1_points_to_array(points: list[G1Point]) -> Array:
     """Convert a list of G1Points to an FRX affine array."""
-    return jnp.array(
+    return fnp.array(
         [bn254_g1_affine((p.x, p.y)) for p in points],
         dtype=bn254_g1_affine,
     )
@@ -583,7 +583,7 @@ def _g1_points_to_array(points: list[G1Point]) -> Array:
 
 def _g2_points_to_array(points: list[G2Point]) -> Array:
     """Convert a list of G2Points to an FRX affine array."""
-    return jnp.array(
+    return fnp.array(
         [bn254_g2_affine((p.x, p.y)) for p in points],
         dtype=bn254_g2_affine,
     )

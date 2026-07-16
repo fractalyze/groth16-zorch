@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from functools import partial
 
 import frx
-import frx.numpy as jnp
+import frx.numpy as fnp
 import numpy as np
 from zk_dtypes import bn254_sf_mont
 
@@ -86,10 +86,10 @@ def _matvec(
 ) -> frx.Array:
     """Az / Bz for one matrix. Offsets are already padded to ``domain_size``."""
     if terms.size == 0:
-        return jnp.zeros(domain_size, dtype=bn254_sf_mont)
-    coeff_ids = jnp.asarray(terms[0::2])
-    wire_ids = jnp.asarray(terms[1::2])
-    row_ids = jnp.asarray(_row_ids(offsets))
+        return fnp.zeros(domain_size, dtype=bn254_sf_mont)
+    coeff_ids = fnp.asarray(terms[0::2])
+    wire_ids = fnp.asarray(terms[1::2])
+    row_ids = fnp.asarray(_row_ids(offsets))
     return _segment_matvec(coeff, witness, coeff_ids, wire_ids, row_ids, domain_size)
 
 
@@ -98,7 +98,7 @@ def compute_abc(
     terms: TermMatrices,
     coefficients: np.ndarray,
     domain_size: int,
-) -> tuple[jnp.ndarray, jnp.ndarray]:
+) -> tuple[frx.Array, frx.Array]:
     """Compute Az, Bz via term-based sparse mat-vec over BN254 Fr.
 
     C is intentionally not evaluated — Groth16 recovers Cz = Az ⊙ Bz via a
@@ -113,12 +113,12 @@ def compute_abc(
     Returns:
         (az, bz) FRX arrays of shape (domain_size,) in Montgomery form.
     """
-    coeff = jnp.asarray(
+    coeff = fnp.asarray(
         coefficients.reshape(-1).view(_MONT_DT)
         if coefficients.size > 0
         else np.zeros(1, dtype=_MONT_DT)
     )
-    w = jnp.asarray(np.ascontiguousarray(witness).view(_MONT_DT).reshape(-1))
+    w = fnp.asarray(np.ascontiguousarray(witness).view(_MONT_DT).reshape(-1))
 
     az = _matvec(coeff, w, terms.a_terms, terms.a_offsets, domain_size)
     bz = _matvec(coeff, w, terms.b_terms, terms.b_offsets, domain_size)

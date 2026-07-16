@@ -35,7 +35,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-import frx.numpy as jnp
+import frx.numpy as fnp
 import numpy as np
 from zk_dtypes import bn254_sf_mont
 from zkbench import BenchmarkConfig, BenchmarkOp, FrxBenchmark
@@ -123,7 +123,7 @@ class Groth16Benchmark(FrxBenchmark):
         from frx import lax
         from zk_dtypes import bn254_sf
 
-        z_mont = jnp.array(data.witness_full, dtype=bn254_sf_mont)
+        z_mont = fnp.array(data.witness_full, dtype=bn254_sf_mont)
         # Only convert the public inputs (small slice) instead of all wires.
         z_pub_std = np.asarray(
             lax.convert_element_type(z_mont[: compiled.config.num_public], bn254_sf)

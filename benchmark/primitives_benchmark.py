@@ -33,7 +33,7 @@ import hashlib
 import sys
 from typing import Iterable
 
-import frx.numpy as jnp
+import frx.numpy as fnp
 import numpy as np
 from frx import lax
 from zk_dtypes import bn254_g1_affine_mont, bn254_sf, bn254_sf_mont  # noqa: F401
@@ -73,7 +73,7 @@ _EXPECTED_HASHES: dict[tuple[str, int], str] = {
 }
 
 
-def _hash_array(arr: jnp.ndarray) -> str:
+def _hash_array(arr: fnp.ndarray) -> str:
     """Compute SHA-256 hash of an FRX array's raw bytes."""
     arr_np = np.array(arr)
     if arr_np.ndim == 0:
@@ -82,17 +82,17 @@ def _hash_array(arr: jnp.ndarray) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def _generate_scalars(n: int, seed: int = 42) -> jnp.ndarray:
+def _generate_scalars(n: int, seed: int = 42) -> fnp.ndarray:
     """Generate deterministic BN254 scalar field elements."""
     rng = np.random.RandomState(seed)
     values = [bn254_sf_mont(int(rng.randint(1, 2**32))) for _ in range(n)]
-    return jnp.array(values, dtype=bn254_sf_mont)
+    return fnp.array(values, dtype=bn254_sf_mont)
 
 
-def _generate_bases(n: int) -> jnp.ndarray:
+def _generate_bases(n: int) -> fnp.ndarray:
     """Generate n copies of the BN254 G1 generator point."""
     gen = bn254_g1_affine_mont((1, 2))
-    return jnp.array(np.array([gen] * n, dtype=np.dtype(bn254_g1_affine_mont)))
+    return fnp.array(np.array([gen] * n, dtype=np.dtype(bn254_g1_affine_mont)))
 
 
 class PrimitivesBenchmark(FrxBenchmark):
