@@ -180,7 +180,7 @@ executable.
 Reproduce with `//benchmark:sp1_groth16` (see `.github/workflows/benchmark.yml`):
 
 ```shell
-JAX_PLATFORMS=cuda,cpu bazel run //benchmark:sp1_groth16 -- \
+FRX_PLATFORMS=cuda,cpu bazel run //benchmark:sp1_groth16 -- \
     --export_dir=<sp1-groth16-export> --deterministic --circuit=sp1
 ```
 
