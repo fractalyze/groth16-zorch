@@ -54,7 +54,6 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import frx
 import frx.numpy as fnp
-import numpy as np
 from frx import lax
 from zk_dtypes import (
     bn254_g1_affine,
@@ -180,22 +179,26 @@ class CompiledProver:
         msm_5 = lax.msm(h_scalars, self.ph1)
         # Phase 3: EC assembly on CPU.
         cpu = frx.devices("cpu")[0]
-        _to_cpu = lambda x: fnp.array(np.array(x), dtype=x.dtype)
         with frx.default_device(cpu):
             return _prove_phase3(
-                _to_cpu(msm_1),
-                _to_cpu(msm_2),
-                _to_cpu(msm_3),
-                _to_cpu(msm_4),
-                _to_cpu(msm_5),
-                _to_cpu(r_val),
-                _to_cpu(s_val),
-                _to_cpu(neg_rs_val),
-                _to_cpu(self.alpha1),
-                _to_cpu(self.beta1),
-                _to_cpu(self.beta2),
-                _to_cpu(self.delta_g1),
-                _to_cpu(self.delta_g2),
+                *frx.device_put(
+                    (
+                        msm_1,
+                        msm_2,
+                        msm_3,
+                        msm_4,
+                        msm_5,
+                        r_val,
+                        s_val,
+                        neg_rs_val,
+                        self.alpha1,
+                        self.beta1,
+                        self.beta2,
+                        self.delta_g1,
+                        self.delta_g2,
+                    ),
+                    cpu,
+                )
             )
 
     def prove(
