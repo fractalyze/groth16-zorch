@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import frx
-import frx.numpy as jnp
+import frx.numpy as fnp
 import numpy as np
 from frx import lax
 from zk_dtypes import bn254_g1_affine, bn254_g2_affine, bn254_sf
@@ -148,11 +148,11 @@ def verify(
     pub_scalars = [int(s) for s in public_signals]
     if gnark_style:
         # gnark: vk_x = sum(pub[i] * IC[i])
-        msm_scalars = jnp.array(pub_scalars, dtype=bn254_sf)
+        msm_scalars = fnp.array(pub_scalars, dtype=bn254_sf)
     else:
         # snarkjs: vk_x = IC[0] + sum(pub[i] * IC[i+1])
-        msm_scalars = jnp.array([1] + pub_scalars, dtype=bn254_sf)
-    msm_points = jnp.array(
+        msm_scalars = fnp.array([1] + pub_scalars, dtype=bn254_sf)
+    msm_points = fnp.array(
         [bn254_g1_affine((pt.x, pt.y)) for pt in vk.ic],
         dtype=bn254_g1_affine,
     )
@@ -169,7 +169,7 @@ def verify(
         None,  # placeholder for vk_x
         bn254_g1_affine((pi_c.x, pi_c.y)),
     ]
-    g2_points = jnp.array(
+    g2_points = fnp.array(
         [
             bn254_g2_affine((pi_b.x, pi_b.y)),
             bn254_g2_affine((vk.beta_g2.x, vk.beta_g2.y)),
@@ -191,7 +191,7 @@ def verify(
         vk_x_x, vk_x_y = int(vk_x_coords[0]), int(vk_x_coords[1])
 
         g1_points_data[2] = bn254_g1_affine((vk_x_x, vk_x_y))
-        g1_points = jnp.array(g1_points_data, dtype=bn254_g1_affine)
+        g1_points = fnp.array(g1_points_data, dtype=bn254_g1_affine)
 
         result = lax.pairing_check(g1_points, g2_points)
     return bool(result)

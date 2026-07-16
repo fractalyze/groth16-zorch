@@ -80,7 +80,7 @@ py_test(
     name = "e2e_gpu_test",
     srcs = ["e2e_test.py"],
     data = [":testdata"],
-    env = {"JAX_PLATFORMS": "cpu,cuda"},
+    env = {"FRX_PLATFORMS": "cpu,cuda"},
     main = "e2e_test.py",
     tags = ["gpu"],
     deps = _E2E_DEPS + [

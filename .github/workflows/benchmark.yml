@@ -108,9 +108,9 @@ jobs:
               -v /data/bazel-benchmark-cache:/root/.cache/bazel \
               -v /tmp/distdir:/distdir:ro \
               -w /workspace \
-              -e JAX_PLATFORMS=cuda,cpu \
-              -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
-              -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
+              -e FRX_PLATFORMS=cuda,cpu \
+              -e FRX_COMPILATION_CACHE_DIR=/data/frx_cache \
+              -e FRX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
               ghcr.io/fractalyze/benchmark-runner:latest \
               bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci --distdir=/distdir //benchmark:sp1_groth16 -- --export_dir=/data/testdata/sp1-groth16/ --deterministic --circuit=sp1 --output=/workspace/groth16_gpu_benchmark_results.json'
           device: gpu
@@ -142,7 +142,7 @@ jobs:
   #     - uses: fractalyze/benchmark-action@v10
   #       with:
   #         benchmark_cmd: |
-  #           JAX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
+  #           FRX_PLATFORMS=cpu bazel --bazelrc=.bazelrc.ci run --config=ci //benchmark:sp1_groth16 -- \
   #               --export_dir=/data/testdata/sp1-groth16/ \
   #               --deterministic --circuit=sp1 \
   #               --output=${{ github.workspace }}/groth16_cpu_benchmark_results.json
@@ -207,9 +207,9 @@ jobs:
               -v /data/bazel-benchmark-cache:/root/.cache/bazel \
               -v /tmp/distdir:/distdir:ro \
               -w /workspace \
-              -e JAX_PLATFORMS=cuda,cpu \
-              -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
-              -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
+              -e FRX_PLATFORMS=cuda,cpu \
+              -e FRX_COMPILATION_CACHE_DIR=/data/frx_cache \
+              -e FRX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
               ghcr.io/fractalyze/benchmark-runner:latest \
               bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci --distdir=/distdir //benchmark:primitives_benchmark -- --sizes=16,18,20,22 --output=/workspace/primitives_gpu_benchmark_results.json'
           device: gpu
@@ -273,9 +273,9 @@ jobs:
               -v /data/bazel-benchmark-cache:/root/.cache/bazel \
               -v /tmp/distdir:/distdir:ro \
               -w /workspace \
-              -e JAX_PLATFORMS=cpu \
-              -e JAX_COMPILATION_CACHE_DIR=/data/jax_cache \
-              -e JAX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
+              -e FRX_PLATFORMS=cpu \
+              -e FRX_COMPILATION_CACHE_DIR=/data/frx_cache \
+              -e FRX_PERSISTENT_CACHE_ENABLE_ZKX_CACHES=zkx_gpu_kernel_cache_file \
               ghcr.io/fractalyze/benchmark-runner:latest \
               bash -c 'bazel --bazelrc=.bazelrc.ci run --config=ci --distdir=/distdir //benchmark:primitives_benchmark -- --sizes=16,18,20,22 --output=/workspace/primitives_cpu_benchmark_results.json'
           device: cpu
