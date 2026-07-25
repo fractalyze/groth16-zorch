@@ -9,10 +9,17 @@ description = "Groth16 prover in Python using FRX (circom/snarkjs compatible)"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
+# frx (the field/ring backend groth16_zorch imports directly) pulls the rest of
+# the CPU stack transitively (frxlib, zk-dtypes), so `pip install groth16-zorch`
+# is importable and CPU-runnable on its own. The `.dev0` floor stays compatible
+# with the exact dev build the consuming workspace pins in requirements.in — a
+# plain `>=0.10.0` would conflict with it (dev builds sort below the release).
+# GPU needs the frx-cuda12-* plugins, which are too large for PyPI; install them
+# from the Fractalyze index (see requirements.in). zkbench is benchmark-only
+# (see the `bench` extra below).
 dependencies = [
     "numpy>=2.3.5",
-    "zk_dtypes>=0.0.2",
-    "zkbench>=0.1.0",
+    "frx>=0.10.0.dev0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -28,7 +35,11 @@ classifiers = [
 [project.scripts]
 groth16-zorch = "groth16_zorch.cli:main"
 
+# zkbench (used only under benchmark/) is served by the Fractalyze index, not
+# PyPI. Install with:
+#   pip install "groth16-zorch[bench]" --extra-index-url https://fractalyze.github.io/pypi/simple/
 [project.optional-dependencies]
+bench = ["zkbench>=0.5.0"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -36,6 +47,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["groth16_zorch*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
