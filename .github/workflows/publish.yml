@@ -11,51 +11,86 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Builds groth16-zorch (pure Python, one `python -m build`) fresh from the
+# dispatched ref and publishes to TestPyPI or PyPI (build-only skips the upload).
+#
+# Upload uses OIDC trusted publishing — one-time setup required: register a
+# trusted publisher for project `groth16-zorch` on test.pypi.org AND pypi.org
+# (this repo + workflow publish.yml + environment testpypi / pypi).
 
 name: Publish
 
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag to publish (e.g. v0.1.0)"
-        required: true
-        type: string
       target:
         description: "Publish target"
         type: choice
         options:
           - testpypi
           - pypi
+          - build-only
         default: testpypi
 
 concurrency:
   group: publish
   cancel-in-progress: false
 
+# Least privilege: the build job only reads source and uploads an artifact.
+# The publish job overrides this with id-token: write for OIDC trusted publishing.
+permissions:
+  contents: read
+
 jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 3
+
   publish:
-    name: Publish to ${{ inputs.target }}
+    name: Publish
+    if: inputs.target != 'build-only'
+    needs: [build]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
     environment: ${{ inputs.target }}
     steps:
-      - name: Download wheels from release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p dist
-          gh release download ${{ inputs.tag }} \
-            --pattern "*.whl" --dir dist \
-            --repo ${{ github.repository }}
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
 
       - name: Publish to TestPyPI
         if: inputs.target == 'testpypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
 
       - name: Publish to PyPI
         if: inputs.target == 'pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
