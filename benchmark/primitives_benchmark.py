@@ -100,7 +100,7 @@ class PrimitivesBenchmark(FrxBenchmark):
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
             implementation="groth16-zorch",
-            version="0.1.0",
+            version="0.1.1",
             default_iterations=3,
             default_warmup=1,
         )

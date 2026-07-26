@@ -14,7 +14,7 @@
 
 """groth16-zorch: a Groth16 prover for circom and gnark on the FRX backend."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from groth16_zorch import gnark, groth16
 
