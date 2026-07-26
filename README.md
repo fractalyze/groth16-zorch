@@ -44,15 +44,8 @@ pip install groth16-zorch 'frx[cuda12]' \
     --extra-index-url https://fractalyze.github.io/pypi/simple/
 ```
 
-The extra index is required for this tier and for the `bench` extra, nothing
-else. `frx[cuda12]` pulls `frx-cuda12-plugin`, which depends on
-`frx-cuda12-pjrt` — 129 MB against PyPI's 100 MiB per-file limit, so PyPI carries
-only `0.0.0` name-reservation stubs for both and the real wheels are served from
-the Fractalyze index. A limit increase has been requested; when it lands the
-command reduces to `pip install groth16-zorch 'frx[cuda12]'` and the extra index
-goes away. The `frx[cuda12]` extra itself stays — it selects the CUDA plugins and
-has nothing to do with the size limit. Everything else in the chain
-(`nvidia-cublas-cu12` and friends) already comes from PyPI.
+The extra index carries the CUDA plugin wheels, which are too large for PyPI's
+per-file limit. It is not needed for the CPU tier.
 
 ### Verify
 
