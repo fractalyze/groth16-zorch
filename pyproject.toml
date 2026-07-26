@@ -8,7 +8,11 @@ version = "0.1.1"
 description = "Groth16 prover in Python using FRX (circom/snarkjs compatible)"
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.9"
+# >=3.11, not >=3.9: frxlib publishes a single cp311 wheel, so 3.9/3.10/3.12
+# cannot resolve at all. requires-python is the only Python gate pip enforces, so
+# advertising a wider range does not add support — it just moves the failure from
+# a clean "Requires-Python" rejection to a resolution error deep inside frx.
+requires-python = ">=3.11"
 # frx (the field/ring backend groth16_zorch imports directly) pulls the rest of
 # the CPU stack transitively (frxlib, zk-dtypes), so `pip install groth16-zorch`
 # is importable and CPU-runnable on its own. The `.dev0` floor stays compatible
@@ -26,10 +30,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
 ]
 
 [project.scripts]

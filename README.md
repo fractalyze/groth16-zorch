@@ -20,6 +20,58 @@ and [ZKX](https://github.com/fractalyze/zkx).
   so they run on the GPU alongside the prover — no native library needed
 - Groth16 proof generation with snarkjs-compatible JSON output
 
+## Installation
+
+**Python 3.11 on Linux x86_64.** `frxlib` publishes a single
+`cp311-cp311-manylinux_2_27_x86_64` wheel, so although its metadata says
+`>=3.11`, on 3.12 or on macOS pip finds nothing to install.
+
+### CPU
+
+```sh
+pip install groth16-zorch
+```
+
+One package is enough because `frx` is a declared dependency of the wheel and
+drags the rest of the CPU stack (`frxlib`, `zk-dtypes`) in transitively — the
+prover imports `frx` directly, so an install that resolved without it could not
+prove anything.
+
+### GPU (CUDA 12)
+
+```sh
+pip install groth16-zorch 'frx[cuda12]' \
+    --extra-index-url https://fractalyze.github.io/pypi/simple/
+```
+
+The extra index is required for this tier and for the `bench` extra, nothing
+else. `frx[cuda12]` pulls `frx-cuda12-plugin`, which depends on
+`frx-cuda12-pjrt` — 129 MB against PyPI's 100 MiB per-file limit, so PyPI carries
+only `0.0.0` name-reservation stubs for both and the real wheels are served from
+the Fractalyze index. A limit increase has been requested; when it lands the
+command reduces to `pip install groth16-zorch 'frx[cuda12]'` and the extra index
+goes away. The `frx[cuda12]` extra itself stays — it selects the CUDA plugins and
+has nothing to do with the size limit. Everything else in the chain
+(`nvidia-cublas-cu12` and friends) already comes from PyPI.
+
+### Verify
+
+```sh
+python -c "import frx, groth16_zorch; print(frx.devices()); print(groth16_zorch.__version__)"
+```
+
+`[CpuDevice(id=0)]` means the CPU tier. A CUDA install prints the GPU devices
+instead. On a machine that has a GPU but only the CPU tier installed, `frx` says
+
+```
+An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not
+installed. Falling back to cpu.
+```
+
+which is worth recognising verbatim: `frx` inherits the wording, and `jaxlib`
+here means `frxlib`. Seeing it after following the GPU command means the GPU tier
+did not take effect and the prover is silently running on CPU.
+
 ## How to build
 
 1. Clone the repository
