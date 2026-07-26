@@ -10,6 +10,13 @@ repos:
         exclude: testutil\.py
     -   id: requirements-txt-fixer
         exclude: requirements_lock_.*\.txt
+# check-yaml above only proves a workflow parses. release.yml can upload to PyPI,
+# where a version is unrepeatable, so its expressions and shell need a linter that
+# understands Actions — a bad `needs.*` reference or an unquoted glob is valid YAML.
+-   repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
 -   repo: https://github.com/psf/black
     rev: 24.1.1
     hooks:
