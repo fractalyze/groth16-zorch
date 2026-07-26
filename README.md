@@ -20,6 +20,34 @@ and [ZKX](https://github.com/fractalyze/zkx).
   so they run on the GPU alongside the prover — no native library needed
 - Groth16 proof generation with snarkjs-compatible JSON output
 
+## Installation
+
+**Python 3.11 on Linux x86_64 only.**
+
+### CPU
+
+```sh
+pip install groth16-zorch
+```
+
+### GPU (CUDA 12)
+
+```sh
+pip install groth16-zorch 'frx[cuda12]' \
+    --extra-index-url https://fractalyze.github.io/pypi/simple/
+```
+
+The extra index carries the CUDA plugin wheels, which are too large for PyPI's
+per-file limit. It is not needed for the CPU tier.
+
+### Verify
+
+```sh
+python -c "import frx, groth16_zorch; print(frx.devices()); print(groth16_zorch.__version__)"
+```
+
+`[CpuDevice(id=0)]` means the CPU tier; a CUDA install prints the GPU devices.
+
 ## How to build
 
 1. Clone the repository
