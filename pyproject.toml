@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "groth16-zorch"
-version = "0.1.1"
+version = "0.1.2"
 description = "Groth16 prover in Python using FRX (circom/snarkjs compatible)"
 readme = "README.md"
 license = {text = "Apache-2.0"}

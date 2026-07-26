@@ -22,20 +22,13 @@ and [ZKX](https://github.com/fractalyze/zkx).
 
 ## Installation
 
-**Python 3.11 on Linux x86_64.** `frxlib` publishes a single
-`cp311-cp311-manylinux_2_27_x86_64` wheel, so although its metadata says
-`>=3.11`, on 3.12 or on macOS pip finds nothing to install.
+**Python 3.11 on Linux x86_64 only.**
 
 ### CPU
 
 ```sh
 pip install groth16-zorch
 ```
-
-One package is enough because `frx` is a declared dependency of the wheel and
-drags the rest of the CPU stack (`frxlib`, `zk-dtypes`) in transitively — the
-prover imports `frx` directly, so an install that resolved without it could not
-prove anything.
 
 ### GPU (CUDA 12)
 
@@ -53,17 +46,7 @@ per-file limit. It is not needed for the CPU tier.
 python -c "import frx, groth16_zorch; print(frx.devices()); print(groth16_zorch.__version__)"
 ```
 
-`[CpuDevice(id=0)]` means the CPU tier. A CUDA install prints the GPU devices
-instead. On a machine that has a GPU but only the CPU tier installed, `frx` says
-
-```
-An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not
-installed. Falling back to cpu.
-```
-
-which is worth recognising verbatim: `frx` inherits the wording, and `jaxlib`
-here means `frxlib`. Seeing it after following the GPU command means the GPU tier
-did not take effect and the prover is silently running on CPU.
+`[CpuDevice(id=0)]` means the CPU tier; a CUDA install prints the GPU devices.
 
 ## How to build
 
