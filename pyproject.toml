@@ -56,3 +56,17 @@ testpaths = ["tests"]
 python_files = ["*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["groth16_zorch"]
+# Annotations are not required yet; turning these on is a typing pass of its own.
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# Untyped or statically unresolvable third parties.
+[[tool.mypy.overrides]]
+module = ["frx.*", "frxlib.*", "zk_dtypes.*", "zkbench.*", "absl.*", "zorch.*"]
+ignore_missing_imports = true

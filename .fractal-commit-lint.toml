@@ -1,0 +1,39 @@
+# Commit-scope policy for groth16-zorch.
+#
+# A scope is the directory the change lives in, named with the root stripped:
+# circom, circom/zkey, gnark, groth16. `tests` is a second root so the mirror
+# tree aligns with what it exercises — tests/circom/x_test.py and
+# groth16_zorch/circom/y.py both derive to `circom`, and one commit can carry
+# both.
+#
+# A change spanning several of those has no honest scope and takes none, which
+# is why a scope is not required.
+
+roots = ["groth16_zorch", "tests"]
+require_scope = false
+
+# Cross-cutting paths that would otherwise drag a scoped change up to nothing.
+# These are path prefixes, not basenames.
+exempt_paths = [
+  "README.md",
+  "LICENSE",
+  ".github",
+  ".gitignore",
+  ".pre-commit-config.yaml",
+  ".fractal-commit-lint.toml",
+  "pyproject.toml",
+  "requirements.in",
+  "requirements_lock_3_11.txt",
+  "MODULE.bazel",
+  "MODULE.bazel.lock",
+  "BUILD.bazel",
+  "benchmark",
+  "groth16_zorch/BUILD.bazel",
+]
+
+[scopes]
+# Modules directly under the package sit above any directory, so derivation
+# yields nothing for them.
+cli = ["groth16_zorch/cli.py"]
+r1cs = ["groth16_zorch/r1cs.py"]
+release = ["groth16_zorch/__init__.py"]
