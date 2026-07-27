@@ -225,6 +225,23 @@ Test organization:
 - `//tests/circom:zkey_test` — `.zkey` parser unit tests
 - `//tests/circom:wtns_test` — `.wtns` parser unit tests
 
+Install the git hooks with both stages named. Plain `pre-commit install` wires
+only the `pre-commit` stage, which leaves the commit-message linter inactive —
+a malformed commit message then sails through to CI:
+
+```shell
+pre-commit install --install-hooks --hook-type pre-commit --hook-type commit-msg
+```
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org):
+a valid type, a lowercase summary with no trailing period, a header of at most
+80 characters, and a body on everything but `docs`. The scope is the directory
+the change lives in — `circom`, `circom/zkey`, `gnark`, `groth16` — or `cli`,
+`r1cs`, `release` for the modules directly under `groth16_zorch/`. A test under
+`tests/` shares the scope of what it exercises. A change spanning several takes
+no scope. The same linter runs in CI over every commit in a pull request and
+over the PR title.
+
 ## License
 
 Licensed under the Apache License, Version 2.0 (see [LICENSE](LICENSE)).
