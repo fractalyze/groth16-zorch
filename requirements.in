@@ -4,6 +4,10 @@ frxlib==0.10.0.dev20260725093147
 frx-cuda12-pjrt==0.10.0.dev20260725093147
 frx-cuda12-plugin==0.10.0.dev20260725093147
 numpy
-# Must move with frx: this frx build requires zk_dtypes >= 0.0.10.
-zk-dtypes==0.0.10
+# Must move with frx: this frx build requires zk_dtypes >= 0.0.10, and the
+# current frx wheels (0.10.2.dev20260820235505 on) floor it at 0.0.15 — the
+# release registering the classical-curve dtypes — so the pin sits at 0.0.16
+# ahead of the next frx bump; below 0.0.15 the frx-update lock recompile is
+# ResolutionImpossible and no bump PR can open.
+zk-dtypes==0.0.16
 zkbench==0.5.0
