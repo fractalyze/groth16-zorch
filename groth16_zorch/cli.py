@@ -39,12 +39,17 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
     from zk_dtypes import bn254_sf_mont
 
     from groth16_zorch.circom.wtns import parse_wtns
+    from groth16_zorch.circom.wtns.wtns import WtnsV2
     from groth16_zorch.circom.zkey import parse_zkey
+    from groth16_zorch.circom.zkey.zkey import ZKeyV1
     from groth16_zorch.groth16 import compile_circom, write_public_signals
     from groth16_zorch.r1cs import compute_abc
 
     print(f"Loading zkey: {args.zkey}")
     zkey = parse_zkey(args.zkey)
+    # The parsers return the abstract base; only these concrete versions carry
+    # the fields below, and only they are supported here.
+    assert isinstance(zkey, ZKeyV1), f"unsupported zkey version {zkey.version}"
 
     print("Compiling proving key...")
     t0 = time.time()
@@ -54,6 +59,7 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
 
     print(f"Loading wtns: {args.wtns}")
     wtns = parse_wtns(args.wtns)
+    assert isinstance(wtns, WtnsV2), f"unsupported wtns version {wtns.version}"
     # Witness is standard form — bitcast for compute_abc.
     witness_mont = wtns.data._witnesses.view(np.dtype(bn254_sf_mont))
     z_std = wtns.data._witnesses
@@ -64,6 +70,7 @@ def _cmd_circom_prove(args: argparse.Namespace) -> None:
     from groth16_zorch.circom.zkey_to_terms import zkey_to_terms
 
     _terms, coefficients = zkey_to_terms(zkey)
+    assert compiled.terms is not None
     az_mont, bz_mont = compute_abc(
         witness_mont,
         compiled.terms,
